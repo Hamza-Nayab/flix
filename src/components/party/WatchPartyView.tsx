@@ -60,20 +60,47 @@ function parseEmbedTelemetry(data: any): { currentTime: number; duration?: numbe
   }
   if (!obj || typeof obj !== 'object') return null;
 
-  // 1. FrameXTV: event: 'frameXTV:timeupdate'
+  // 1. VidLink PLAYER_EVENT: { type: 'PLAYER_EVENT', data: { event: 'timeupdate', currentTime: number, duration: number } }
+  if (obj.type === 'PLAYER_EVENT' && obj.data) {
+    const time = obj.data.currentTime ?? obj.data.progress;
+    if (typeof time === 'number' && !isNaN(time)) {
+      return { currentTime: time, duration: obj.data.duration };
+    }
+  }
+
+  // 2. FrameXTV: event: 'frameXTV:timeupdate'
   if (obj.event === 'frameXTV:timeupdate' && typeof obj.currentTime === 'number') {
     return { currentTime: obj.currentTime, duration: obj.duration };
   }
 
-  // 2. VidLink & VidLink MEDIA_DATA / MEDIA_TIME
+  // 3. VidLink MEDIA_DATA / MEDIA_TIME
   if (obj.type === 'MEDIA_DATA' || obj.type === 'MEDIA_TIME') {
-    const time = obj.data?.currentTime ?? obj.currentTime ?? obj.data?.time ?? obj.progress;
-    if (typeof time === 'number' && !isNaN(time)) {
-      return { currentTime: time, duration: obj.data?.duration ?? obj.duration };
+    const directTime = obj.data?.currentTime ?? obj.currentTime ?? obj.data?.time ?? obj.progress;
+    if (typeof directTime === 'number' && !isNaN(directTime)) {
+      return { currentTime: directTime, duration: obj.data?.duration ?? obj.duration };
+    }
+    if (obj.data?.progress && typeof obj.data.progress.watched === 'number') {
+      return { currentTime: obj.data.progress.watched, duration: obj.data.progress.duration };
+    }
+    if (obj.data && typeof obj.data === 'object') {
+      for (const k of Object.keys(obj.data)) {
+        const item = obj.data[k];
+        if (item?.progress && typeof item.progress.watched === 'number') {
+          return { currentTime: item.progress.watched, duration: item.progress.duration };
+        }
+        if (item?.show_progress) {
+          for (const epKey of Object.keys(item.show_progress)) {
+            const ep = item.show_progress[epKey];
+            if (ep?.progress && typeof ep.progress.watched === 'number') {
+              return { currentTime: ep.progress.watched, duration: ep.progress.duration };
+            }
+          }
+        }
+      }
     }
   }
 
-  // 3. Generic HTML5 / Player.js / JWPlayer (event: 'timeupdate' or 'time')
+  // 4. Generic HTML5 / Player.js / JWPlayer (event: 'timeupdate' or 'time')
   if (obj.event === 'timeupdate' || obj.event === 'time') {
     const time =
       typeof obj.value === 'number'
@@ -84,7 +111,7 @@ function parseEmbedTelemetry(data: any): { currentTime: number; duration?: numbe
     }
   }
 
-  // 4. Direct properties on data object
+  // 5. Direct properties on data object
   if (typeof obj.currentTime === 'number' && !isNaN(obj.currentTime) && obj.currentTime > 0) {
     return { currentTime: obj.currentTime, duration: obj.duration };
   }
@@ -416,8 +443,9 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   }, [roomId, hostToken]);
 
   // Playback sync controls
-  const [timestampInput, setTimestampInput] = useState('');
+  const [customTimestamp, setCustomTimestamp] = useState<string | null>(null);
   const [isSyncingPlayback, setIsSyncingPlayback] = useState(false);
+  const [hostJustSynced, setHostJustSynced] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
@@ -618,19 +646,19 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const handleSyncTimestamp = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const currentToken = hostToken || sessionStorage.getItem(`roseflix_party_host_${roomId}`);
-    if (!currentToken || !timestampInput.trim() || isSyncingPlayback) return;
+    const timeToSync = (customTimestamp !== null ? customTimestamp : effectiveTimestampValue).trim();
+    if (!currentToken || !timeToSync || isSyncingPlayback) return;
 
     setIsSyncingPlayback(true);
     try {
-      const rawText = timestampInput.trim();
       let targetSecs = 0;
-      const parts = rawText.split(':').map(Number);
+      const parts = timeToSync.split(':').map(Number);
       if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
         targetSecs = parts[0] * 60 + parts[1];
       } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
         targetSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
-      } else if (!isNaN(Number(rawText)) && rawText !== '') {
-        targetSecs = Math.max(0, Number(rawText));
+      } else if (!isNaN(Number(timeToSync)) && timeToSync !== '') {
+        targetSecs = Math.max(0, Number(timeToSync));
       }
 
       await fetch(`/api/party/${roomId}/playback`, {
@@ -641,7 +669,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
         },
         body: JSON.stringify({
           action: 'seek',
-          timestamp: rawText,
+          timestamp: timeToSync,
           timestampSeconds: targetSecs > 0 ? targetSecs : undefined,
         }),
       });
@@ -659,7 +687,9 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
         } catch {}
       }
 
-      setTimestampInput('');
+      setCustomTimestamp(null);
+      setHostJustSynced(true);
+      setTimeout(() => setHostJustSynced(false), 2000);
     } catch (err) {
       console.error('Failed to sync timestamp:', err);
     } finally {
@@ -885,7 +915,14 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const displayHostTime =
     isHost && hostPlaybackSeconds > 0
       ? formatSecondsToTimestamp(hostPlaybackSeconds)
-      : playback?.timestampFormatted;
+      : (playback?.timestampFormatted || '');
+
+  // Effective timestamp displayed in the sync input:
+  // Auto-updates with the video player's live time, unless host explicitly typed a custom override
+  const effectiveTimestampValue =
+    customTimestamp !== null
+      ? customTimestamp
+      : (displayHostTime || '');
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -1205,28 +1242,79 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
 
                 {/* Timestamp Jump Input & Button */}
                 <form onSubmit={handleSyncTimestamp} className="flex items-center gap-1.5">
-                  <div className="relative">
-                    <Clock className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
+                  <div className="relative group">
+                    <button
+                      type="button"
+                      onClick={() => setCustomTimestamp(null)}
+                      title={customTimestamp !== null ? "Click to resume auto-updating with video player" : "Auto-updating with live video player"}
+                      className="absolute left-2.5 top-1/2 -translate-y-1/2 p-0 bg-transparent border-0 cursor-pointer"
+                    >
+                      <Clock
+                        className="w-3.5 h-3.5 transition-transform group-hover:scale-110"
+                        style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+                      />
+                    </button>
                     <input
                       id="party-sync-timestamp-input"
                       name="partySyncTimestamp"
                       type="text"
-                      value={timestampInput}
-                      onChange={(e) => setTimestampInput(e.target.value)}
-                      placeholder="e.g. 24:15"
-                      className="w-24 pl-7 pr-2 py-1.5 rounded-xl bg-[#1a1a28] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none font-mono"
+                      value={effectiveTimestampValue}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setCustomTimestamp(val);
+                      }}
+                      onBlur={() => {
+                        if (!customTimestamp?.trim()) {
+                          setCustomTimestamp(null);
+                        }
+                      }}
+                      placeholder={displayHostTime || "00:00"}
+                      className={`w-24 pl-7 pr-2 py-1.5 rounded-xl border text-white text-xs focus:outline-none font-mono transition-all ${
+                        customTimestamp !== null
+                          ? 'bg-[#202034] border-amber-500/50 shadow-[0_0_8px_rgba(245,158,11,0.2)]'
+                          : 'bg-[#1a1a28] border-white/10'
+                      }`}
                       style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
-                      title="Enter mm:ss or timestamp to synchronize viewers"
+                      title={
+                        customTimestamp !== null
+                          ? "Custom timestamp entered. Click the clock icon or clear input to resume auto-updating."
+                          : "Auto-updating with video player. Type to enter a custom time."
+                      }
                       autoComplete="off"
                       aria-label="Synchronize timestamp"
                     />
                   </div>
                   <button
                     type="submit"
-                    disabled={!timestampInput.trim() || isSyncingPlayback}
-                    className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#222232] hover:bg-[#2b2b3f] text-slate-200 hover:text-white border border-white/10 disabled:opacity-40 transition-colors cursor-pointer"
+                    disabled={!effectiveTimestampValue.trim() || isSyncingPlayback}
+                    className="flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-semibold disabled:opacity-40 transition-all cursor-pointer shadow-sm"
+                    style={
+                      hostJustSynced
+                        ? {
+                            backgroundColor: '#10b981',
+                            color: '#ffffff',
+                            boxShadow: '0 0 12px rgba(16,185,129,0.5)',
+                          }
+                        : {
+                            backgroundColor: '#222232',
+                            color: '#e2e8f0',
+                            border: '1px solid rgba(255,255,255,0.1)',
+                          }
+                    }
+                    title={
+                      customTimestamp !== null
+                        ? `Seek everyone to custom timestamp ${effectiveTimestampValue}`
+                        : `Synchronize everyone to current player time (${effectiveTimestampValue || '00:00'})`
+                    }
                   >
-                    Sync Time
+                    {hostJustSynced ? (
+                      <>
+                        <Check className="w-3.5 h-3.5 text-white" />
+                        <span>Synced!</span>
+                      </>
+                    ) : (
+                      <span>Sync Time</span>
+                    )}
                   </button>
                 </form>
               </div>
