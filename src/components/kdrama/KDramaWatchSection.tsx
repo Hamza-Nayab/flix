@@ -42,21 +42,7 @@ export default function KDramaWatchSection({
   initialSeason,
   initialEpisode,
 }: KDramaWatchSectionProps) {
-  const [selectedServer, setSelectedServer] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const urlServer = new URL(window.location.href).searchParams.get('server');
-        if (urlServer && KDRAMA_SERVERS.some((s) => s.id === urlServer)) {
-          return urlServer;
-        }
-        const saved = localStorage.getItem('preferred_kdrama_server');
-        if (saved && KDRAMA_SERVERS.some((s) => s.id === saved)) {
-          return saved;
-        }
-      } catch {}
-    }
-    return 'server-1';
-  });
+  const [selectedServer, setSelectedServer] = useState<string>('server-1');
 
   // Load and apply remembered server preference from localStorage on mount
   useEffect(() => {
@@ -315,9 +301,10 @@ export default function KDramaWatchSection({
         ) : (
           /* Multi-Server Clean Iframe Embed */
           <iframe
-            key={iframeKey}
+            key={`${selectedServer}-${currentSeason}-${currentEpisode}-${iframeKey}`}
             src={embedUrl}
             title={`${showTitle} - S${currentSeason} E${currentEpisode}`}
+            loading="eager"
             className="absolute inset-0 w-full h-full border-0"
             referrerPolicy="no-referrer"
             allowFullScreen

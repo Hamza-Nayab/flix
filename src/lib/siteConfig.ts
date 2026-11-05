@@ -98,14 +98,26 @@ const primaryColor = resolvePrimaryColor();
 const primaryHex = primaryColor.replace(/^#/, '');
 
 function resolveSiteUrl(): string {
-  if (process.env.NEXT_PUBLIC_API_URL) {
-    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  if (process.env.NEXT_PUBLIC_SITE_URL?.trim()) {
+    return process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/+$/, '');
+  }
+  if (process.env.VERCEL_PROJECT_PRODUCTION_URL?.trim()) {
+    return `https://${process.env.VERCEL_PROJECT_PRODUCTION_URL.trim().replace(/\/+$/, '')}`;
+  }
+  if (process.env.VERCEL_URL?.trim()) {
+    return `https://${process.env.VERCEL_URL.trim().replace(/\/+$/, '')}`;
+  }
+  if (process.env.NEXT_PUBLIC_API_URL?.trim()) {
+    return process.env.NEXT_PUBLIC_API_URL.trim().replace(/\/+$/, '');
   }
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
   }
-  const rawUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
-  return rawUrl.replace(/\/+$/, '');
+  const niche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
+  const siteName = (process.env.NEXT_PUBLIC_SITE_NAME || '').toLowerCase();
+  if (siteName.includes('anirose') || niche === 'anime') return 'https://anirose.to';
+  if (siteName.includes('dramapulse') || niche === 'kdrama' || niche === 'kdramas') return 'https://dramapulse.to';
+  return 'https://roseflix.top';
 }
 
 export const SITE_CONFIG: SiteConfig = {

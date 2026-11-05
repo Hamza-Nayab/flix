@@ -722,9 +722,10 @@ export default function AnimeWatchSection({
         ) : (
           /* Multi-Server Clean Iframe Embed */
           <iframe
-            key={iframeKey}
+            key={`${selectedServer}-${currentSeason}-${currentEpisode}-${subOrDub}-${iframeKey}`}
             src={embedUrl}
             title={isMovie ? title : `${title} - Ep ${absoluteEpisode} (S${currentSeason} E${currentEpisode})`}
+            loading="eager"
             className="absolute inset-0 w-full h-full border-0"
             referrerPolicy="no-referrer"
             allowFullScreen

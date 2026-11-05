@@ -288,9 +288,10 @@ const WatchPartyVideoFrame = React.memo(function WatchPartyVideoFrame({
         />
       ) : (
         <iframe
-          key={iframeKey}
+          key={`${currentEmbedUrl}-${iframeKey}`}
           src={currentEmbedUrl}
           title={title}
+          loading="eager"
           className="absolute inset-0 w-full h-full border-0"
           referrerPolicy="no-referrer"
           allowFullScreen
@@ -308,25 +309,28 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [isLiveConnected, setIsLiveConnected] = useState(false);
-  const [hostToken] = useState<string | null>(() => {
-    if (typeof window !== 'undefined') {
-      return sessionStorage.getItem(`roseflix_party_host_${roomId}`);
-    }
-    return null;
-  });
+  const [hostToken, setHostToken] = useState<string | null>(null);
+  const [myNickname, setMyNickname] = useState<string>('Guest');
 
-  const [myNickname, setMyNickname] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      const saved = sessionStorage.getItem('roseflix_party_name');
-      if (saved) return saved;
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
       const token = sessionStorage.getItem(`roseflix_party_host_${roomId}`);
-      if (token) return 'Host';
-      const randomGuest = `Guest_${Math.floor(100 + Math.random() * 900)}`;
-      sessionStorage.setItem('roseflix_party_name', randomGuest);
-      return randomGuest;
-    }
-    return 'Guest';
-  });
+      if (token) {
+        setHostToken(token);
+      }
+      const saved = sessionStorage.getItem('roseflix_party_name');
+      if (saved) {
+        setMyNickname(saved);
+      } else if (token) {
+        setMyNickname('Host');
+      } else {
+        const randomGuest = `Guest_${Math.floor(100 + Math.random() * 900)}`;
+        sessionStorage.setItem('roseflix_party_name', randomGuest);
+        setMyNickname(randomGuest);
+      }
+    } catch {}
+  }, [roomId]);
 
   const [inputMessage, setInputMessage] = useState('');
   const [copied, setCopied] = useState(false);

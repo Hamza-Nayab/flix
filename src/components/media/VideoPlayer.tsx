@@ -41,21 +41,7 @@ export default function VideoPlayer({
   episode = 1,
   streamUrl,
 }: VideoPlayerProps) {
-  const [selectedServer, setSelectedServer] = useState<string>(() => {
-    if (typeof window !== 'undefined') {
-      try {
-        const urlServer = new URL(window.location.href).searchParams.get('server');
-        if (urlServer && VIDEO_SERVERS.some((s) => s.id === urlServer)) {
-          return urlServer;
-        }
-        const saved = localStorage.getItem('preferred_movie_tv_server');
-        if (saved && VIDEO_SERVERS.some((s) => s.id === saved)) {
-          return saved;
-        }
-      } catch {}
-    }
-    return 'server-1';
-  });
+  const [selectedServer, setSelectedServer] = useState<string>('server-1');
 
   // Load and apply remembered server preference from localStorage on mount
   useEffect(() => {
@@ -375,9 +361,10 @@ export default function VideoPlayer({
         ) : (
           /* Multi-Server Clean Iframe Embed */
           <iframe
-            key={iframeKey}
+            key={`${selectedServer}-${season}-${episode}-${iframeKey}`}
             src={embedUrl}
             title={title}
+            loading="eager"
             className="absolute inset-0 w-full h-full border-0"
             referrerPolicy="no-referrer"
             allowFullScreen

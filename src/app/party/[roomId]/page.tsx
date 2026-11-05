@@ -1,6 +1,6 @@
 import React from 'react';
 import type { Metadata } from 'next';
-import WatchPartyView from '@/components/party/WatchPartyView';
+import WatchPartyClientWrapper from '@/components/party/WatchPartyClientWrapper';
 
 interface PartyPageProps {
   params: Promise<{ roomId: string }>;
@@ -12,7 +12,7 @@ export async function generateMetadata({ params }: PartyPageProps): Promise<Meta
     title: `Watch Together (Room ${roomId}) - RoseFlix`,
     description: 'Join a temporary synchronized watch party session on RoseFlix. No login required.',
     robots: {
-      index: false, // Temporary watch parties should not be indexed by Google crawlers
+      index: false,
       follow: false,
     },
   };
@@ -21,5 +21,5 @@ export async function generateMetadata({ params }: PartyPageProps): Promise<Meta
 export default async function PartyRoomPage({ params }: PartyPageProps) {
   const { roomId } = await params;
 
-  return <WatchPartyView roomId={roomId} />;
+  return <WatchPartyClientWrapper roomId={roomId} />;
 }
