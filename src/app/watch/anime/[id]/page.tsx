@@ -3,20 +3,21 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { Star, Calendar, Film, Sparkles, Building, Tv } from 'lucide-react';
 import AnimeWatchSection from '@/components/anime/AnimeWatchSection';
 import AdBanner from '@/components/ads/AdBanner';
 import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import JsonLd from '@/components/seo/JsonLd';
+import TenantWatchSeoBlock from '@/components/seo/TenantWatchSeoBlock';
 import { getAnimeById, getTopAiringAnime, FALLBACK_ANIME_LIST, normalizeAnimeEpisodeCoordinates } from '@/lib/anime';
 import MediaCarousel from '@/components/media/MediaCarousel';
 import { getTMDBImageUrl } from '@/lib/utils';
 import {
   getSiteUrl,
-  cleanMetaDescription,
-  buildAnimeSeriesSchema,
-  buildVideoObjectSchema,
-  buildBreadcrumbSchema,
+  generateTenantWatchMetadata,
+  generateTenantSeoFaqs,
+  buildWatchPageGraphSchema,
 } from '@/lib/seo';
 import { SITE_CONFIG } from '@/lib/siteConfig';
 
@@ -34,7 +35,6 @@ export async function generateMetadata({
   const season = parseInt(sParams.s || '1', 10);
   const ep = parseInt(sParams.ep || '1', 10);
   const requestedType = sParams.type === 'movie' ? 'movie' : 'tv';
-  const siteUrl = getSiteUrl();
 
   try {
     const anime =
@@ -51,57 +51,36 @@ export async function generateMetadata({
     const normalizedEpisode = coords.episode;
     const normalizedAbsoluteEp = coords.absoluteEpisode;
 
-    const pageTitle = isMovie
-      ? `Watch ${title} Full Movie Online (English Sub & Dub) in HD | ${SITE_CONFIG.SITE_NAME}`
-      : `Watch ${title} Season ${normalizedSeason} Episode ${normalizedEpisode} (Ep ${normalizedAbsoluteEp}) (English Sub & Dub) in HD | ${SITE_CONFIG.SITE_NAME}`;
-    
-    const canonicalUrl = `${siteUrl}/watch/anime/${id}${isMovie ? '?type=movie' : `?s=${normalizedSeason}&ep=${normalizedEpisode}`}`;
     const backdropUrl = anime.backdrop_path
       ? getTMDBImageUrl(anime.backdrop_path, 'w1280')
-      : `${siteUrl}/og-default.jpg`;
+      : undefined;
 
-    const description = cleanMetaDescription(
-      anime.overview,
-      `Watch ${title} online in full HD with English Subtitles and Dubbing on ${SITE_CONFIG.SITE_NAME}. Multi-server playback with zero lag.`
-    );
+    let requestHost: string | null = null;
+    try {
+      const headerList = await headers();
+      requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+    } catch {}
 
-    return {
-      title: {
-        absolute: pageTitle,
-      },
-      description,
-      alternates: {
-        canonical: canonicalUrl,
-      },
-      openGraph: {
-        type: isMovie ? 'video.movie' : 'video.tv_show',
-        url: canonicalUrl,
-        title: pageTitle,
-        description,
-        siteName: SITE_CONFIG.SITE_NAME,
-        images: [
-          {
-            url: backdropUrl,
-            width: 1280,
-            height: 720,
-            alt: `Watch ${title} on ${SITE_CONFIG.SITE_NAME}`,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: pageTitle,
-        description,
-        images: [backdropUrl],
-      },
-      robots: {
-        index: true,
-        follow: true,
-      },
-    };
+    return generateTenantWatchMetadata({
+      id,
+      mediaType: 'anime',
+      title,
+      romajiTitle: anime.original_name || (anime as any).title_japanese || null,
+      season: normalizedSeason,
+      episode: normalizedEpisode,
+      absoluteEpisode: normalizedAbsoluteEp,
+      year: anime.first_air_date ? anime.first_air_date.slice(0, 4) : undefined,
+      overview: anime.overview,
+      backdropUrl,
+      studio: anime.studios?.[0]?.name,
+      genres: anime.genres?.map((g) => g.name),
+      requestHost,
+    });
   } catch {
     return {
-      title: `Watch Anime Online Free in HD (English Sub & Dub) | ${SITE_CONFIG.SITE_NAME}`,
+      title: {
+        absolute: `Watch Anime Online Free in HD (English Sub & Dub) | ${SITE_CONFIG.SITE_NAME}`,
+      },
       description: `Stream top anime episodes online in full HD with English Subtitles and Dubs on ${SITE_CONFIG.SITE_NAME}.`,
     };
   }
@@ -137,7 +116,6 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
   const backdropUrl = anime.backdrop_path ? getTMDBImageUrl(anime.backdrop_path, 'w1280') : '/placeholder-backdrop.svg';
   const posterUrl = anime.poster_path ? getTMDBImageUrl(anime.poster_path, 'w342') : '/placeholder-poster.svg';
 
-  // Breadcrumbs (Relative internal paths to prevent port mismatch navigation)
   const breadcrumbItems = [
     { name: 'Anime', url: '/anime' },
     { name: title, url: `/watch/anime/${anime.id}` },
@@ -147,18 +125,47 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
     },
   ];
 
-  // Schema.org structured data
-  const animeSchema = buildAnimeSeriesSchema(anime, siteUrl, initialAbsoluteEp);
-  const videoSchema = buildVideoObjectSchema({
-    name: isMovie
-      ? `Watch ${title} (Eng Sub & Dub) Online HD`
-      : `Watch ${title} S${initialSeason} Ep ${initialEpisode} (Ep ${initialAbsoluteEp}) (Eng Sub & Dub) Online HD`,
-    description: anime.overview || `Stream ${title} on ${SITE_CONFIG.SITE_NAME}.`,
-    thumbnailUrl: backdropUrl,
-    uploadDate: anime.first_air_date || anime.release_date || new Date().toISOString(),
-    embedUrl: `${siteUrl}/watch/anime/${anime.id}${isMovie ? '?type=movie' : `?s=${initialSeason}&ep=${initialEpisode}`}`,
+  let requestHost: string | null = null;
+  try {
+    const headerList = await headers();
+    requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+  } catch {}
+
+  // Dynamic FAQs & Full Schema Graph
+  const faqs = generateTenantSeoFaqs({
+    id: anime.id,
+    mediaType: 'anime',
+    title,
+    romajiTitle: anime.original_name || (anime as any).title_japanese,
+    season: initialSeason,
+    episode: initialEpisode,
+    absoluteEpisode: initialAbsoluteEp,
+    year: anime.first_air_date ? anime.first_air_date.slice(0, 4) : undefined,
+    overview: anime.overview,
+    studio: anime.studios?.[0]?.name,
+    genres: anime.genres?.map((g) => g.name),
+    requestHost,
   });
-  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
+  const fullSchema = buildWatchPageGraphSchema({
+    id: anime.id,
+    mediaType: 'anime',
+    title,
+    romajiTitle: anime.original_name || (anime as any).title_japanese,
+    season: initialSeason,
+    episode: initialEpisode,
+    absoluteEpisode: initialAbsoluteEp,
+    year: anime.first_air_date ? anime.first_air_date.slice(0, 4) : undefined,
+    overview: anime.overview,
+    backdropUrl,
+    embedUrl: `${siteUrl}/watch/anime/${anime.id}${isMovie ? '?type=movie' : `?s=${initialSeason}&ep=${initialEpisode}`}`,
+    faqs,
+    rating: anime.vote_average || 8.0,
+    ratingCount: anime.vote_count || 500,
+    genres: anime.genres?.map((g) => g.name),
+    studio: anime.studios?.[0]?.name,
+    requestHost,
+  });
 
   // Recommendations / More Airing
   const recommendations = await getTopAiringAnime(12).catch(() => FALLBACK_ANIME_LIST);
@@ -181,8 +188,8 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16">
-      {/* Rich Snippets */}
-      <JsonLd data={[animeSchema, videoSchema, breadcrumbSchema]} />
+      {/* Rich Snippets Multi-Graph (VideoObject, TVEpisode, Breadcrumbs, FAQPage) */}
+      <JsonLd data={fullSchema} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Breadcrumbs */}
@@ -326,6 +333,27 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
             </div>
           </div>
         </article>
+
+        {/* Tenant-Specific Anti-Duplicate SSR Specs & SEO FAQ Section */}
+        <TenantWatchSeoBlock
+          mediaType="anime"
+          requestHost={requestHost}
+          id={anime.id}
+          title={title}
+          romajiTitle={anime.original_name || (anime as any).title_japanese}
+          season={initialSeason}
+          episode={initialEpisode}
+          absoluteEpisode={initialAbsoluteEp}
+          year={anime.first_air_date ? anime.first_air_date.slice(0, 4) : undefined}
+          studio={anime.studios?.[0]?.name}
+          genres={anime.genres?.map((g) => g.name)}
+          overview={anime.overview}
+          rating={anime.vote_average}
+          ratingCount={anime.vote_count}
+          totalEpisodes={anime.episodes}
+          status={anime.status}
+          faqs={faqs}
+        />
 
         {/* More Airing Anime Carousel */}
         {recItems.length > 0 && (

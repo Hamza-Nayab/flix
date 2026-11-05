@@ -57,6 +57,7 @@ export interface TVShow {
   original_language?: string;
   spoken_languages?: SpokenLanguage[];
   production_companies?: ProductionCompany[];
+  networks?: Array<{ id: number; name: string; logo_path?: string | null; origin_country?: string }>;
   media_type?: 'tv';
 }
 

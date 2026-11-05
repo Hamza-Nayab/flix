@@ -3,11 +3,13 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { Star, Calendar, Film, Tv, Sparkles, Building, Globe, CheckCircle2, Flame } from 'lucide-react';
 import KDramaWatchSection from '@/components/kdrama/KDramaWatchSection';
 import AdBanner from '@/components/ads/AdBanner';
 import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import JsonLd from '@/components/seo/JsonLd';
+import TenantWatchSeoBlock from '@/components/seo/TenantWatchSeoBlock';
 import MediaCarousel from '@/components/media/MediaCarousel';
 import { getTVDetails } from '@/lib/tmdb';
 import { getTrendingKDramas, FALLBACK_KDRAMA_LIST, slugify } from '@/lib/kdrama';
@@ -15,10 +17,9 @@ import { getTMDBImageUrl, formatYear, formatRating } from '@/lib/utils';
 import { SITE_CONFIG } from '@/lib/siteConfig';
 import {
   getSiteUrl,
-  cleanMetaDescription,
-  buildKDramaSeriesSchema,
-  buildVideoObjectSchema,
-  buildBreadcrumbSchema,
+  generateTenantWatchMetadata,
+  generateTenantSeoFaqs,
+  buildWatchPageGraphSchema,
 } from '@/lib/seo';
 
 interface PageProps {
@@ -34,63 +35,47 @@ export async function generateMetadata({
   const sParams = await searchParams;
   const s = parseInt(sParams.s || '1', 10);
   const ep = parseInt(sParams.ep || '1', 10);
-  const siteUrl = getSiteUrl();
-  const siteName = SITE_CONFIG.SITE_NAME;
 
   try {
     const show = await getTVDetails(id);
     const title = show.name;
-    const pageTitle = `Watch ${title} Episode ${ep} (Season ${s}) Eng Sub in HD — ${siteName}`;
-    const canonicalUrl = `${siteUrl}/watch/kdrama/${id}?s=${s}&ep=${ep}`;
+    const year = formatYear(show.first_air_date);
     const backdropUrl = show.backdrop_path
       ? getTMDBImageUrl(show.backdrop_path, 'original')
       : show.poster_path
       ? getTMDBImageUrl(show.poster_path, 'original')
-      : `${siteUrl}/og-default.jpg`;
+      : undefined;
 
-    const description = cleanMetaDescription(
-      show.overview,
-      `Watch ${title} Season ${s} Episode ${ep} with English subtitles in 1080p HD on ${siteName}.`
-    );
+    const network = show.networks?.[0]?.name || 'tvN / JTBC / SBS';
+    const cast = show.credits?.cast?.slice(0, 3).map((c) => c.name) || [];
 
-    return {
-      title: {
-        absolute: pageTitle,
-      },
-      description,
-      alternates: {
-        canonical: canonicalUrl,
-      },
-      openGraph: {
-        type: 'video.tv_show',
-        url: canonicalUrl,
-        title: pageTitle,
-        description,
-        siteName,
-        images: [
-          {
-            url: backdropUrl,
-            width: 1280,
-            height: 720,
-            alt: `Watch ${title} Season ${s} Episode ${ep} on ${siteName}`,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title: pageTitle,
-        description,
-        images: [backdropUrl],
-      },
-      robots: {
-        index: true,
-        follow: true,
-      },
-    };
+    let requestHost: string | null = null;
+    try {
+      const headerList = await headers();
+      requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+    } catch {}
+
+    return generateTenantWatchMetadata({
+      id,
+      mediaType: 'kdrama',
+      title,
+      romajiTitle: show.original_name,
+      season: s,
+      episode: ep,
+      year,
+      overview: show.overview,
+      backdropUrl,
+      network,
+      cast,
+      genres: show.genres?.map((g) => g.name),
+      requestHost,
+    });
   } catch {
     return {
-      title: `Watch Korean Drama Online Free with English Subtitles — ${siteName}`,
-      description: `Stream popular Korean dramas and Asian series in HD with English subtitles on ${siteName}.`,
+      title: {
+        absolute: `Watch Korean Drama Online Free with English Subtitles — ${SITE_CONFIG.SITE_NAME}`,
+      },
+      description: `Stream popular Korean dramas and Asian series in HD with English subtitles on ${SITE_CONFIG.SITE_NAME}.`,
     };
   }
 }
@@ -105,7 +90,6 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
   try {
     show = await getTVDetails(id);
   } catch {
-    // If not found in live TMDB, check fallback
     const fallback = FALLBACK_KDRAMA_LIST.find((d) => String(d.id) === String(id));
     if (!fallback) {
       notFound();
@@ -136,26 +120,59 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
     ? getTMDBImageUrl(show.backdrop_path, 'original')
     : posterUrl || `${siteUrl}/og-default.jpg`;
 
-  // Breadcrumbs
+  const network = show.networks?.[0]?.name || 'tvN / JTBC / SBS';
+  const cast = show.credits?.cast?.slice(0, 5).map((c: any) => c.name) || [];
+
   const breadcrumbItems = [
     { name: 'K-Dramas', url: '/kdramas' },
-    { name: show.name, url: `${siteUrl}/watch/kdrama/${show.id}` },
+    { name: show.name, url: `/watch/kdrama/${show.id}` },
     {
       name: `S${initialSeason} E${initialEpisode}`,
-      url: `${siteUrl}/watch/kdrama/${show.id}?s=${initialSeason}&ep=${initialEpisode}`,
+      url: `/watch/kdrama/${show.id}?s=${initialSeason}&ep=${initialEpisode}`,
     },
   ];
 
-  // Schema.org structured data
-  const kdramaSchema = buildKDramaSeriesSchema(show, siteUrl, initialSeason, initialEpisode);
-  const videoSchema = buildVideoObjectSchema({
-    name: `Watch ${show.name} Season ${initialSeason} Episode ${initialEpisode} Eng Sub Online HD`,
-    description: show.overview || `Stream ${show.name} on ${SITE_CONFIG.SITE_NAME}.`,
-    thumbnailUrl: backdropUrl,
-    uploadDate: show.first_air_date || new Date().toISOString(),
-    embedUrl: `${siteUrl}/watch/kdrama/${show.id}?s=${initialSeason}&ep=${initialEpisode}`,
+  let requestHost: string | null = null;
+  try {
+    const headerList = await headers();
+    requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+  } catch {}
+
+  // Dynamic FAQs & Full Schema Graph
+  const faqs = generateTenantSeoFaqs({
+    id: show.id,
+    mediaType: 'kdrama',
+    title: show.name,
+    romajiTitle: show.original_name,
+    season: initialSeason,
+    episode: initialEpisode,
+    year,
+    overview: show.overview,
+    network,
+    cast,
+    genres: show.genres?.map((g: any) => g.name),
+    requestHost,
   });
-  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
+  const fullSchema = buildWatchPageGraphSchema({
+    id: show.id,
+    mediaType: 'kdrama',
+    title: show.name,
+    romajiTitle: show.original_name,
+    season: initialSeason,
+    episode: initialEpisode,
+    year,
+    overview: show.overview,
+    backdropUrl,
+    embedUrl: `${siteUrl}/watch/kdrama/${show.id}?s=${initialSeason}&ep=${initialEpisode}`,
+    faqs,
+    rating: show.vote_average || 8.0,
+    ratingCount: show.vote_count || 300,
+    genres: show.genres?.map((g: any) => g.name),
+    network,
+    cast,
+    requestHost,
+  });
 
   // Recommendations
   const moreDramas = await getTrendingKDramas(1).catch(() => FALLBACK_KDRAMA_LIST);
@@ -163,8 +180,8 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16">
-      {/* Rich Snippets */}
-      <JsonLd data={[kdramaSchema, videoSchema, breadcrumbSchema]} />
+      {/* Rich Snippets Multi-Graph */}
+      <JsonLd data={fullSchema} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Semantic Visible Breadcrumbs */}
@@ -223,7 +240,7 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
                     <Star className="w-3.5 h-3.5 fill-amber-400" />
                     <span>{formatRating(show.vote_average)}</span>
                     <span className="text-slate-400 font-normal">
-                      ({show.vote_count.toLocaleString()} votes)
+                      ({show.vote_count ? show.vote_count.toLocaleString() : 0} votes)
                     </span>
                   </div>
                 </div>
@@ -257,6 +274,12 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
                     Episodes: <strong className="text-white font-medium">{show.number_of_episodes}</strong>
                   </span>
                 )}
+                {network && (
+                  <span className="flex items-center gap-1.5">
+                    <Building className="w-4 h-4 text-slate-500" />
+                    Network: <strong className="text-white font-medium">{network}</strong>
+                  </span>
+                )}
               </div>
 
               {/* Genres */}
@@ -288,6 +311,27 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
           </div>
         </article>
 
+        {/* Tenant-Specific Anti-Duplicate SSR Specs & SEO FAQ Section */}
+        <TenantWatchSeoBlock
+          mediaType="kdrama"
+          requestHost={requestHost}
+          id={show.id}
+          title={show.name}
+          originalTitle={show.original_name}
+          season={initialSeason}
+          episode={initialEpisode}
+          year={year}
+          network={network}
+          cast={cast}
+          genres={show.genres?.map((g: any) => g.name)}
+          overview={show.overview}
+          rating={show.vote_average}
+          ratingCount={show.vote_count}
+          totalEpisodes={show.number_of_episodes}
+          status={show.status}
+          faqs={faqs}
+        />
+
         {/* More K-Dramas Carousel */}
         {recItems.length > 0 && (
           <div className="mt-8">
@@ -301,4 +345,3 @@ export default async function KDramaWatchPage({ params, searchParams }: PageProp
     </div>
   );
 }
-

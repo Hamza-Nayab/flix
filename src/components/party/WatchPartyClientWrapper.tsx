@@ -24,3 +24,4 @@ const WatchPartyView = dynamic(() => import('@/components/party/WatchPartyView')
 export default function WatchPartyClientWrapper({ roomId }: { roomId: string }) {
   return <WatchPartyView roomId={roomId} />;
 }
+

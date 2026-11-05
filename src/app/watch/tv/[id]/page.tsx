@@ -3,20 +3,21 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { Star, Calendar, Tv, Users, Building, Globe, Layers } from 'lucide-react';
 import TVPlayerSection from '@/components/media/TVPlayerSection';
 import MediaCarousel from '@/components/media/MediaCarousel';
 import AdBanner from '@/components/ads/AdBanner';
 import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import JsonLd from '@/components/seo/JsonLd';
+import TenantWatchSeoBlock from '@/components/seo/TenantWatchSeoBlock';
 import { getTVDetails } from '@/lib/tmdb';
 import { getTMDBImageUrl, formatYear, formatRating } from '@/lib/utils';
 import {
   getSiteUrl,
-  cleanMetaDescription,
-  buildTVSeriesSchema,
-  buildVideoObjectSchema,
-  buildBreadcrumbSchema,
+  generateTenantWatchMetadata,
+  generateTenantSeoFaqs,
+  buildWatchPageGraphSchema,
 } from '@/lib/seo';
 import { SITE_CONFIG } from '@/lib/siteConfig';
 
@@ -28,67 +29,45 @@ interface PageProps {
 export async function generateMetadata({ params, searchParams }: PageProps): Promise<Metadata> {
   const { id } = await params;
   const sParams = await searchParams;
-  const s = sParams.s || '1';
-  const e = sParams.e || '1';
-  const siteUrl = getSiteUrl();
+  const s = parseInt(sParams.s || '1', 10);
+  const e = parseInt(sParams.e || '1', 10);
 
   try {
     const show = await getTVDetails(id);
     const year = formatYear(show.first_air_date);
-    const topCast = show.credits?.cast.slice(0, 3).map((c) => c.name).join(', ') || '';
-    const description = cleanMetaDescription(
-      show.overview
-        ? `${show.overview} Season ${s} Episode ${e}. Starring ${topCast}.`
-        : undefined,
-      `Stream ${show.name} in full 1080p HD online on RoseFlix.`
-    );
-
-    const title = `Watch ${show.name} Season ${s} Episode ${e} (${year}) Online | RoseFlix`;
-    const canonicalUrl = `${siteUrl}/watch/tv/${id}`;
+    const topCast = show.credits?.cast.slice(0, 3).map((c) => c.name) || [];
     const backdropUrl = show.backdrop_path
       ? getTMDBImageUrl(show.backdrop_path, 'original')
       : show.poster_path
       ? getTMDBImageUrl(show.poster_path, 'original')
-      : `${siteUrl}/og-default.jpg`;
+      : undefined;
 
-    return {
-      title: {
-        absolute: title,
-      },
-      description,
-      alternates: {
-        canonical: canonicalUrl,
-      },
-      openGraph: {
-        type: 'video.tv_show',
-        url: canonicalUrl,
-        title,
-        description,
-        siteName: 'RoseFlix',
-        images: [
-          {
-            url: backdropUrl,
-            width: 1280,
-            height: 720,
-            alt: `Watch ${show.name} Season ${s} Episode ${e} on RoseFlix`,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title,
-        description,
-        images: [backdropUrl],
-      },
-      robots: {
-        index: true,
-        follow: true,
-      },
-    };
+    let requestHost: string | null = null;
+    try {
+      const headerList = await headers();
+      requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+    } catch {}
+
+    return generateTenantWatchMetadata({
+      id,
+      mediaType: 'tv',
+      title: show.name,
+      season: s,
+      episode: e,
+      year,
+      overview: show.overview,
+      backdropUrl,
+      cast: topCast,
+      network: show.networks?.[0]?.name,
+      genres: show.genres?.map((g) => g.name),
+      requestHost,
+    });
   } catch {
     return {
-      title: 'Watch TV Series Online Full HD | RoseFlix',
-      description: 'Stream trending full HD TV shows online on RoseFlix with fast servers and subtitles.',
+      title: {
+        absolute: `Watch TV Series Online Full HD | ${SITE_CONFIG.SITE_NAME}`,
+      },
+      description: `Stream trending full HD TV shows online on ${SITE_CONFIG.SITE_NAME} with fast servers and subtitles.`,
     };
   }
 }
@@ -113,34 +92,65 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
   const primaryGenre = show.genres?.[0];
   const recommendations = show.recommendations?.results || show.similar?.results || [];
 
+  const backdropUrl = show.backdrop_path
+    ? getTMDBImageUrl(show.backdrop_path, 'original')
+    : show.poster_path
+    ? getTMDBImageUrl(show.poster_path, 'original')
+    : `${siteUrl}/og-default.jpg`;
+
   // Breadcrumbs items
   const breadcrumbItems = [
     { name: 'TV Series', url: '/tv' },
     ...(primaryGenre
       ? [{ name: primaryGenre.name, url: `/tv?genre=${primaryGenre.id}` }]
       : []),
-    { name: `${show.name} S${currentSeason} E${currentEpisode}`, url: `${siteUrl}/watch/tv/${show.id}` },
+    { name: `${show.name} S${currentSeason} E${currentEpisode}`, url: `/watch/tv/${show.id}?s=${currentSeason}&e=${currentEpisode}` },
   ];
 
-  // Schema.org Structured Data
-  const tvSchema = buildTVSeriesSchema(show, siteUrl);
-  const videoSchema = buildVideoObjectSchema({
-    name: `Watch ${show.name} Season ${currentSeason} Episode ${currentEpisode} (${year}) Online`,
-    description: show.overview || `Stream ${show.name} in HD online on RoseFlix.`,
-    thumbnailUrl: show.backdrop_path
-      ? getTMDBImageUrl(show.backdrop_path, 'original')
-      : show.poster_path
-      ? getTMDBImageUrl(show.poster_path, 'original')
-      : `${siteUrl}/og-default.jpg`,
-    uploadDate: show.first_air_date,
-    embedUrl: `${siteUrl}/watch/tv/${show.id}`,
+  let requestHost: string | null = null;
+  try {
+    const headerList = await headers();
+    requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+  } catch {}
+
+  // Dynamic FAQs & Full Schema Graph
+  const faqs = generateTenantSeoFaqs({
+    id: show.id,
+    mediaType: 'tv',
+    title: show.name,
+    season: currentSeason,
+    episode: currentEpisode,
+    year,
+    overview: show.overview,
+    network: show.networks?.[0]?.name,
+    cast: topCast.map((c) => c.name),
+    genres: show.genres?.map((g) => g.name),
+    requestHost,
   });
-  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
+  const fullSchema = buildWatchPageGraphSchema({
+    id: show.id,
+    mediaType: 'tv',
+    title: show.name,
+    season: currentSeason,
+    episode: currentEpisode,
+    year,
+    overview: show.overview,
+    backdropUrl,
+    embedUrl: `${siteUrl}/watch/tv/${show.id}?s=${currentSeason}&e=${currentEpisode}`,
+    faqs,
+    rating: show.vote_average || 7.5,
+    ratingCount: show.vote_count || 500,
+    genres: show.genres?.map((g) => g.name),
+    network: show.networks?.[0]?.name,
+    cast: topCast.map((c) => c.name),
+    requestHost,
+  });
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16">
-      {/* Rich Snippets (TVSeries, VideoObject, Breadcrumbs) */}
-      <JsonLd data={[tvSchema, videoSchema, breadcrumbSchema]} />
+      {/* Rich Snippets (TVSeries, VideoObject, Breadcrumbs, FAQPage) */}
+      <JsonLd data={fullSchema} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Semantic Visible Breadcrumb Navigation */}
@@ -203,7 +213,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
 
                 {/* Primary Single <h1> for Target SEO Keyword */}
                 <h1 className="text-2xl sm:text-4xl font-extrabold text-white tracking-tight">
-                  Watch {show.name} Season {currentSeason} Episode {currentEpisode} ({year}) Online
+                  Watch {show.name} Season {currentSeason} Episode {currentEpisode} Online
                 </h1>
 
                 {show.tagline && (
@@ -224,49 +234,39 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
                   </span>
                 )}
                 {show.number_of_episodes && (
-                  <span>
-                    Total Episodes: <strong className="text-white font-medium">{show.number_of_episodes}</strong>
-                  </span>
-                )}
-                {show.original_language && (
                   <span className="flex items-center gap-1.5">
-                    <Globe className="w-4 h-4 text-slate-500" />
-                    Original Language: <strong className="text-white font-medium uppercase">{show.original_language}</strong>
+                    <Tv className="w-4 h-4 text-slate-500" />
+                    Episodes: <strong className="text-white font-medium">{show.number_of_episodes}</strong>
                   </span>
                 )}
               </div>
 
-              {/* Internal Linking: Genre Tags */}
-              {show.genres && show.genres.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium">Genres:</span>
-                  {show.genres.map((g) => (
-                    <Link
-                      key={g.id}
-                      href={`/tv?genre=${g.id}`}
-                      title={`Browse ${g.name} Series`}
-                      className="text-xs px-3 py-1 rounded-full bg-[#161620] text-slate-300 hover:text-white border border-white/10 hover:border-[var(--primary-color)] transition-colors"
+              {/* Genres */}
+              {show.genres && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {show.genres.map((genre) => (
+                    <span
+                      key={genre.id}
+                      className="text-xs px-3 py-1 rounded-full bg-[#181824] text-slate-300 border border-white/5"
                     >
-                      {g.name}
-                    </Link>
+                      {genre.name}
+                    </span>
                   ))}
                 </div>
               )}
 
-              {/* Synopsis & Content Depth */}
-              <div className="space-y-1.5">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Series Overview & Synopsis
-                </h2>
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  {show.overview || `Watch ${show.name} (${year}) online in full HD with multiple fast streaming servers, episode selector, and English subtitles on ${SITE_CONFIG.NAME}.`}
-                </p>
-              </div>
+              {/* Overview */}
+              {show.overview && (
+                <div className="space-y-1.5 pt-1">
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Overview</h2>
+                  <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">{show.overview}</p>
+                </div>
+              )}
 
               {/* Production Companies */}
               {show.production_companies && show.production_companies.length > 0 && (
-                <div className="space-y-1.5 pt-1">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
+                <div className="pt-2">
+                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 mb-1 flex items-center gap-1.5">
                     <Building className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                     Networks & Studios
                   </h3>
@@ -316,6 +316,26 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
             </div>
           </div>
         </article>
+
+        {/* Tenant-Specific Anti-Duplicate SSR Specs & SEO FAQ Section */}
+        <TenantWatchSeoBlock
+          mediaType="tv"
+          requestHost={requestHost}
+          id={show.id}
+          title={show.name}
+          season={currentSeason}
+          episode={currentEpisode}
+          year={year}
+          network={show.networks?.[0]?.name}
+          cast={topCast.map((c) => c.name)}
+          genres={show.genres?.map((g) => g.name)}
+          overview={show.overview}
+          rating={show.vote_average}
+          ratingCount={show.vote_count}
+          totalEpisodes={show.number_of_episodes}
+          totalSeasons={show.number_of_seasons}
+          faqs={faqs}
+        />
 
         {/* Dense Internal Linking Web: Recommendations / Similar Shows */}
         {recommendations.length > 0 && (

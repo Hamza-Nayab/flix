@@ -3,20 +3,21 @@ import type { Metadata } from 'next';
 import Image from 'next/image';
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
+import { headers } from 'next/headers';
 import { Star, Clock, Calendar, Film, Users, Building, Globe, CheckCircle } from 'lucide-react';
 import VideoPlayer from '@/components/media/VideoPlayer';
 import MediaCarousel from '@/components/media/MediaCarousel';
 import AdBanner from '@/components/ads/AdBanner';
 import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import JsonLd from '@/components/seo/JsonLd';
+import TenantWatchSeoBlock from '@/components/seo/TenantWatchSeoBlock';
 import { getMovieDetails } from '@/lib/tmdb';
 import { getTMDBImageUrl, formatYear, formatRating, formatRuntime } from '@/lib/utils';
 import {
   getSiteUrl,
-  cleanMetaDescription,
-  buildMovieSchema,
-  buildVideoObjectSchema,
-  buildBreadcrumbSchema,
+  generateTenantWatchMetadata,
+  generateTenantSeoFaqs,
+  buildWatchPageGraphSchema,
 } from '@/lib/seo';
 import { SITE_CONFIG } from '@/lib/siteConfig';
 
@@ -26,63 +27,42 @@ interface PageProps {
 
 export async function generateMetadata({ params }: PageProps): Promise<Metadata> {
   const { id } = await params;
-  const siteUrl = getSiteUrl();
 
   try {
     const movie = await getMovieDetails(id);
     const year = formatYear(movie.release_date);
-    const topCast = movie.credits?.cast.slice(0, 3).map((c) => c.name).join(', ') || '';
-    const description = cleanMetaDescription(
-      movie.overview ? `${movie.overview} Starring ${topCast}.` : undefined,
-      'Stream full movie in 1080p HD online on RoseFlix.'
-    );
-
-    const title = `Watch ${movie.title} (${year}) Online Full HD | RoseFlix`;
-    const canonicalUrl = `${siteUrl}/watch/movie/${id}`;
+    const topCast = movie.credits?.cast.slice(0, 3).map((c) => c.name) || [];
+    const director = movie.credits?.crew.find((c) => c.job === 'Director')?.name || null;
     const backdropUrl = movie.backdrop_path
       ? getTMDBImageUrl(movie.backdrop_path, 'original')
       : movie.poster_path
       ? getTMDBImageUrl(movie.poster_path, 'original')
-      : `${siteUrl}/og-default.jpg`;
+      : undefined;
 
-    return {
-      title: {
-        absolute: title,
-      },
-      description,
-      alternates: {
-        canonical: canonicalUrl,
-      },
-      openGraph: {
-        type: 'video.movie',
-        url: canonicalUrl,
-        title,
-        description,
-        siteName: 'RoseFlix',
-        images: [
-          {
-            url: backdropUrl,
-            width: 1280,
-            height: 720,
-            alt: `Watch ${movie.title} (${year}) in Full HD on RoseFlix`,
-          },
-        ],
-      },
-      twitter: {
-        card: 'summary_large_image',
-        title,
-        description,
-        images: [backdropUrl],
-      },
-      robots: {
-        index: true,
-        follow: true,
-      },
-    };
+    let requestHost: string | null = null;
+    try {
+      const headerList = await headers();
+      requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+    } catch {}
+
+    return generateTenantWatchMetadata({
+      id,
+      mediaType: 'movie',
+      title: movie.title,
+      year,
+      overview: movie.overview,
+      backdropUrl,
+      director,
+      cast: topCast,
+      genres: movie.genres?.map((g) => g.name),
+      requestHost,
+    });
   } catch {
     return {
-      title: 'Watch Movie Online Full HD | RoseFlix',
-      description: 'Stream trending full HD movies online on RoseFlix with fast servers and subtitles.',
+      title: {
+        absolute: `Watch Movie Online Full HD | ${SITE_CONFIG.SITE_NAME}`,
+      },
+      description: `Stream trending full HD movies online on ${SITE_CONFIG.SITE_NAME} with fast servers and subtitles.`,
     };
   }
 }
@@ -99,40 +79,64 @@ export default async function MovieWatchPage({ params }: PageProps) {
   const siteUrl = getSiteUrl();
   const year = formatYear(movie.release_date);
   const runtime = formatRuntime(movie.runtime);
-  const topCast = movie.credits?.cast.slice(0, 8) || [];
   const director = movie.credits?.crew.find((c) => c.job === 'Director')?.name;
-  const primaryGenre = movie.genres?.[0];
-  const recommendations = movie.recommendations?.results || movie.similar?.results || [];
+  const topCast = movie.credits?.cast.slice(0, 8) || [];
+  const recommendations = movie.recommendations?.results.length
+    ? movie.recommendations.results
+    : movie.similar?.results || [];
 
-  // Breadcrumbs items
+  const backdropUrl = movie.backdrop_path
+    ? getTMDBImageUrl(movie.backdrop_path, 'original')
+    : movie.poster_path
+    ? getTMDBImageUrl(movie.poster_path, 'original')
+    : `${siteUrl}/og-default.jpg`;
+
   const breadcrumbItems = [
     { name: 'Movies', url: '/movies' },
-    ...(primaryGenre
-      ? [{ name: primaryGenre.name, url: `/movies?genre=${primaryGenre.id}` }]
-      : []),
-    { name: movie.title, url: `${siteUrl}/watch/movie/${movie.id}` },
+    { name: movie.title, url: `/watch/movie/${movie.id}` },
   ];
 
-  // Schema.org Structured Data
-  const movieSchema = buildMovieSchema(movie, siteUrl);
-  const videoSchema = buildVideoObjectSchema({
-    name: `Watch ${movie.title} (${year}) Online Full HD`,
-    description: movie.overview || `Stream ${movie.title} in HD online on RoseFlix.`,
-    thumbnailUrl: movie.backdrop_path
-      ? getTMDBImageUrl(movie.backdrop_path, 'original')
-      : movie.poster_path
-      ? getTMDBImageUrl(movie.poster_path, 'original')
-      : `${siteUrl}/og-default.jpg`,
-    uploadDate: movie.release_date,
-    embedUrl: `${siteUrl}/watch/movie/${movie.id}`,
-    duration: movie.runtime,
+  let requestHost: string | null = null;
+  try {
+    const headerList = await headers();
+    requestHost = headerList.get('x-forwarded-host') || headerList.get('host');
+  } catch {}
+
+  // Dynamic FAQs & Full Multi-Graph Schema
+  const faqs = generateTenantSeoFaqs({
+    id: movie.id,
+    mediaType: 'movie',
+    title: movie.title,
+    year,
+    overview: movie.overview,
+    director,
+    cast: topCast.map((c) => c.name),
+    genres: movie.genres?.map((g) => g.name),
+    requestHost,
   });
-  const breadcrumbSchema = buildBreadcrumbSchema(breadcrumbItems);
+
+  const fullSchema = buildWatchPageGraphSchema({
+    id: movie.id,
+    mediaType: 'movie',
+    title: movie.title,
+    year,
+    overview: movie.overview,
+    backdropUrl,
+    embedUrl: `${siteUrl}/watch/movie/${movie.id}`,
+    faqs,
+    runtimeMinutes: movie.runtime || 110,
+    director,
+    cast: topCast.map((c) => c.name),
+    rating: movie.vote_average || 7.5,
+    ratingCount: movie.vote_count || 1000,
+    genres: movie.genres?.map((g) => g.name),
+    requestHost,
+  });
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16">
-      {/* Rich Snippets (Movie, VideoObject, Breadcrumbs) */}
-      <JsonLd data={[movieSchema, videoSchema, breadcrumbSchema]} />
+      {/* Rich Snippets (Movie, VideoObject, Breadcrumbs, FAQPage) */}
+      <JsonLd data={fullSchema} />
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         {/* Semantic Visible Breadcrumb Navigation */}
@@ -218,55 +222,31 @@ export default async function MovieWatchPage({ params }: PageProps) {
                     Director: <strong className="text-white font-medium">{director}</strong>
                   </span>
                 )}
-                {movie.original_language && (
-                  <span className="flex items-center gap-1.5">
-                    <Globe className="w-4 h-4 text-slate-500" />
-                    Original Language: <strong className="text-white font-medium uppercase">{movie.original_language}</strong>
-                  </span>
-                )}
               </div>
 
-              {/* Internal Linking: Genre Tags */}
-              {movie.genres && movie.genres.length > 0 && (
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="text-xs text-slate-400 font-medium">Genres:</span>
-                  {movie.genres.map((g) => (
-                    <Link
-                      key={g.id}
-                      href={`/movies?genre=${g.id}`}
-                      title={`Browse ${g.name} Movies`}
-                      className="text-xs px-3 py-1 rounded-full bg-[#161620] text-slate-300 hover:text-white border border-white/10 hover:border-[var(--primary-color)] transition-colors"
+              {/* Genres */}
+              {movie.genres && (
+                <div className="flex flex-wrap gap-2 pt-1">
+                  {movie.genres.map((genre) => (
+                    <span
+                      key={genre.id}
+                      className="text-xs px-3 py-1 rounded-full bg-[#181824] text-slate-300 border border-white/5"
                     >
-                      {g.name}
-                    </Link>
+                      {genre.name}
+                    </span>
                   ))}
                 </div>
               )}
 
-              {/* Synopsis & Content Depth */}
-              <div className="space-y-1.5">
-                <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">
-                  Storyline & Overview
-                </h2>
-                <p className="text-sm text-slate-300 leading-relaxed">
-                  {movie.overview || `Watch ${movie.title} (${year}) online in full HD with multiple fast streaming servers and English subtitles on ${SITE_CONFIG.NAME}.`}
-                </p>
-              </div>
-
-              {/* Production Companies */}
-              {movie.production_companies && movie.production_companies.length > 0 && (
+              {/* Overview */}
+              {movie.overview && (
                 <div className="space-y-1.5 pt-1">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Building className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
-                    Studios & Production
-                  </h3>
-                  <p className="text-xs text-slate-300">
-                    {movie.production_companies.map((c) => c.name).join(' • ')}
-                  </p>
+                  <h2 className="text-xs font-bold uppercase tracking-wider text-slate-400">Overview</h2>
+                  <p className="text-sm text-slate-300 leading-relaxed max-w-3xl">{movie.overview}</p>
                 </div>
               )}
 
-              {/* Featured Cast List */}
+              {/* Cast */}
               {topCast.length > 0 && (
                 <div className="space-y-2 pt-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
@@ -306,6 +286,23 @@ export default async function MovieWatchPage({ params }: PageProps) {
             </div>
           </div>
         </article>
+
+        {/* Tenant-Specific Anti-Duplicate SSR Specs & SEO FAQ Section */}
+        <TenantWatchSeoBlock
+          mediaType="movie"
+          requestHost={requestHost}
+          id={movie.id}
+          title={movie.title}
+          year={year}
+          runtimeMinutes={movie.runtime}
+          director={director}
+          cast={topCast.map((c) => c.name)}
+          genres={movie.genres?.map((g) => g.name)}
+          overview={movie.overview}
+          rating={movie.vote_average}
+          ratingCount={movie.vote_count}
+          faqs={faqs}
+        />
 
         {/* Dense Internal Linking Web: Recommendations / Similar Movies */}
         {recommendations.length > 0 && (

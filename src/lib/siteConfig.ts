@@ -1,5 +1,23 @@
 export type PrimaryNiche = 'movies' | 'anime' | 'kdrama';
 export type AdPhase = 'clean' | 'hybrid' | 'aggressive';
+export type TenantId = 'anirose' | 'dramapulse' | 'roseflix';
+
+export interface TenantSeoProfile {
+  id: TenantId;
+  name: string;
+  siteName: string;
+  domain: string;
+  defaultUrl: string;
+  niche: PrimaryNiche;
+  primaryColor: string;
+  primaryColorHex: string;
+  primaryRgb: string;
+  primaryContrastText: string;
+  primaryGradientTo: string;
+  tagline: string;
+  keywords: string[];
+  focusDescription: string;
+}
 
 export interface SiteConfig {
   NAME: string;
@@ -13,7 +31,90 @@ export interface SiteConfig {
   PRIMARY_NICHE: PrimaryNiche;
   AD_PHASE: AdPhase;
   POPUNDER_COOLDOWN_MINUTES: number;
+  TENANT_ID: TenantId;
 }
+
+export const TENANT_PROFILES: Record<TenantId, TenantSeoProfile> = {
+  anirose: {
+    id: 'anirose',
+    name: 'AniRose',
+    siteName: 'AniRose',
+    domain: 'anirose.to',
+    defaultUrl: 'https://anirose.to',
+    niche: 'anime',
+    primaryColor: '#00F5D4',
+    primaryColorHex: '00F5D4',
+    primaryRgb: '0, 245, 212',
+    primaryContrastText: '#09090b',
+    primaryGradientTo: '#00BB9C',
+    tagline: 'Watch Anime Online in Full HD (English Sub & Dub)',
+    keywords: [
+      'watch anime online',
+      'anime english sub and dub',
+      'simulcast anime hd',
+      'stream anime free',
+      'anirose anime',
+      '1080p anime stream',
+      'myanimelist anime',
+      'anilist episodes',
+      'unlimited anime streaming',
+    ],
+    focusDescription:
+      'Stream thousands of anime series, movies, and simulcasts in full 1080p HD with Japanese audio, English subtitles, and English dubbing on AniRose.',
+  },
+  dramapulse: {
+    id: 'dramapulse',
+    name: 'DramaPulse',
+    siteName: 'DramaPulse',
+    domain: 'dramapulse.to',
+    defaultUrl: 'https://dramapulse.to',
+    niche: 'kdrama',
+    primaryColor: '#8B5CF6',
+    primaryColorHex: '8B5CF6',
+    primaryRgb: '139, 92, 246',
+    primaryContrastText: '#FFFFFF',
+    primaryGradientTo: '#6D28D9',
+    tagline: 'Watch Korean & Asian Dramas Online with English Subtitles',
+    keywords: [
+      'watch kdrama online',
+      'korean drama english sub',
+      'asian drama streaming',
+      'dramapulse kdrama',
+      'tvn jtbc streaming',
+      'k-drama full episodes',
+      'korean series 1080p',
+      'free kdrama streaming',
+    ],
+    focusDescription:
+      'Watch popular Korean and Asian dramas online in 1080p Full HD with fast English subtitles, multi-server reliability, and zero buffering on DramaPulse.',
+  },
+  roseflix: {
+    id: 'roseflix',
+    name: 'RoseFlix',
+    siteName: 'RoseFlix',
+    domain: 'roseflix.top',
+    defaultUrl: 'https://roseflix.top',
+    niche: 'movies',
+    primaryColor: '#FF1E56',
+    primaryColorHex: 'FF1E56',
+    primaryRgb: '255, 30, 86',
+    primaryContrastText: '#FFFFFF',
+    primaryGradientTo: '#D90429',
+    tagline: 'Stream Full Movies & TV Series in 1080p HD',
+    keywords: [
+      'watch movies online',
+      'stream full movies free',
+      'watch tv series hd',
+      'roseflix streaming',
+      '1080p movies online',
+      'cinema releases full hd',
+      'free series streaming',
+      'hollywood movies streaming',
+    ],
+    focusDescription:
+      'Stream box-office movies, theatrical releases, and trending TV shows online in crisp 1080p HD with redundant servers and multi-language subtitles on RoseFlix.',
+  },
+};
 
 export function hexToRgb(hex: string): string {
   const clean = hex.replace(/^#/, '');
@@ -48,56 +149,51 @@ export function getContrastTextColor(hex: string): string {
 
 export function getGradientToColor(hex: string): string {
   const clean = hex.replace(/^#/, '').toLowerCase();
-  if (clean === '00f5d4') return '#00BB9C'; // Deep Emerald Teal for AniRose
-  if (clean === '8b5cf6') return '#6D28D9'; // Deep Royal Violet for DramaPulse
-  return '#D90429'; // Deep Crimson for RoseFlix
+  if (clean === '00f5d4') return '#00BB9C'; // Emerald Teal for AniRose
+  if (clean === '8b5cf6') return '#6D28D9'; // Royal Violet for DramaPulse
+  return '#D90429'; // Crimson for RoseFlix
 }
 
-function resolvePrimaryColor(): string {
-  const envColor = process.env.NEXT_PUBLIC_PRIMARY_COLOR?.replace(/['"]+/g, '').trim();
-  if (envColor && envColor.startsWith('#')) {
-    return envColor;
-  }
-  if (envColor && /^[0-9A-Fa-f]{3,6}$/.test(envColor)) {
-    return `#${envColor}`;
-  }
+export function detectTenantId(hostOrIdentifier?: string | null): TenantId {
+  const target = (hostOrIdentifier || '').toLowerCase();
+  if (target.includes('anirose') || target.includes('anime')) return 'anirose';
+  if (target.includes('dramapulse') || target.includes('kdrama')) return 'dramapulse';
+  if (target.includes('roseflix') || target.includes('movies') || target.includes('flix')) return 'roseflix';
 
-  const siteName = (process.env.NEXT_PUBLIC_SITE_NAME || '').toLowerCase();
-  const niche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
+  // Environment variables fallback
+  const envName = (
+    process.env.NEXT_PUBLIC_SITE_NAME ||
+    process.env.NEXT_PUBLIC_SITE_ID ||
+    ''
+  ).toLowerCase();
+  if (envName.includes('anirose')) return 'anirose';
+  if (envName.includes('dramapulse')) return 'dramapulse';
+  if (envName.includes('roseflix')) return 'roseflix';
 
-  if (siteName.includes('anirose') || niche === 'anime') {
-    return '#00F5D4';
-  }
-  if (siteName.includes('dramapulse') || niche === 'kdrama' || niche === 'kdramas') {
-    return '#8B5CF6';
-  }
-  return '#FF1E56';
+  const envNiche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
+  if (envNiche === 'anime') return 'anirose';
+  if (envNiche === 'kdrama' || envNiche === 'kdramas') return 'dramapulse';
+
+  return 'roseflix';
 }
 
-function resolveSiteName(): string {
-  if (process.env.NEXT_PUBLIC_SITE_NAME?.trim()) {
-    return process.env.NEXT_PUBLIC_SITE_NAME.trim();
+export function getTenantProfile(hostOrIdentifier?: string | null): TenantSeoProfile {
+  const tenantId = detectTenantId(hostOrIdentifier);
+  return TENANT_PROFILES[tenantId];
+}
+
+export function resolveActiveSiteUrl(requestHost?: string | null): string {
+  if (requestHost) {
+    const cleanHost = requestHost.split(':')[0].trim();
+    if (cleanHost && cleanHost !== 'localhost' && cleanHost !== '127.0.0.1') {
+      const protocol = requestHost.includes('localhost') ? 'http' : 'https';
+      return `${protocol}://${requestHost.trim()}`.replace(/\/+$/, '');
+    }
+    if (cleanHost === 'localhost' || cleanHost === '127.0.0.1') {
+      return `http://${requestHost.trim()}`.replace(/\/+$/, '');
+    }
   }
-  const niche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
-  if (niche === 'anime') return 'AniRose';
-  if (niche === 'kdrama' || niche === 'kdramas') return 'DramaPulse';
-  return 'RoseFlix';
-}
 
-function resolvePrimaryNiche(): PrimaryNiche {
-  const niche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
-  if (niche === 'anime') return 'anime';
-  if (niche === 'kdrama' || niche === 'kdramas') return 'kdrama';
-  const siteName = (process.env.NEXT_PUBLIC_SITE_NAME || '').toLowerCase();
-  if (siteName.includes('anirose')) return 'anime';
-  if (siteName.includes('dramapulse')) return 'kdrama';
-  return 'movies';
-}
-
-const primaryColor = resolvePrimaryColor();
-const primaryHex = primaryColor.replace(/^#/, '');
-
-function resolveSiteUrl(): string {
   if (process.env.NEXT_PUBLIC_SITE_URL?.trim()) {
     return process.env.NEXT_PUBLIC_SITE_URL.trim().replace(/\/+$/, '');
   }
@@ -113,17 +209,44 @@ function resolveSiteUrl(): string {
   if (typeof window !== 'undefined' && window.location?.origin) {
     return window.location.origin;
   }
-  const niche = (process.env.NEXT_PUBLIC_PRIMARY_NICHE || '').toLowerCase();
-  const siteName = (process.env.NEXT_PUBLIC_SITE_NAME || '').toLowerCase();
-  if (siteName.includes('anirose') || niche === 'anime') return 'https://anirose.to';
-  if (siteName.includes('dramapulse') || niche === 'kdrama' || niche === 'kdramas') return 'https://dramapulse.to';
-  return 'https://roseflix.top';
+
+  const tenant = detectTenantId(requestHost);
+  return TENANT_PROFILES[tenant].defaultUrl;
 }
+
+function resolvePrimaryColor(): string {
+  const envColor = process.env.NEXT_PUBLIC_PRIMARY_COLOR?.replace(/['"]+/g, '').trim();
+  if (envColor && envColor.startsWith('#')) {
+    return envColor;
+  }
+  if (envColor && /^[0-9A-Fa-f]{3,6}$/.test(envColor)) {
+    return `#${envColor}`;
+  }
+
+  const tenant = detectTenantId();
+  return TENANT_PROFILES[tenant].primaryColor;
+}
+
+function resolveSiteName(): string {
+  if (process.env.NEXT_PUBLIC_SITE_NAME?.trim()) {
+    return process.env.NEXT_PUBLIC_SITE_NAME.trim();
+  }
+  const tenant = detectTenantId();
+  return TENANT_PROFILES[tenant].siteName;
+}
+
+function resolvePrimaryNiche(): PrimaryNiche {
+  const tenant = detectTenantId();
+  return TENANT_PROFILES[tenant].niche;
+}
+
+const primaryColor = resolvePrimaryColor();
+const primaryHex = primaryColor.replace(/^#/, '');
 
 export const SITE_CONFIG: SiteConfig = {
   NAME: resolveSiteName(),
   SITE_NAME: resolveSiteName(),
-  SITE_URL: resolveSiteUrl(),
+  SITE_URL: resolveActiveSiteUrl(),
   PRIMARY_COLOR: primaryColor,
   PRIMARY_COLOR_HEX: primaryHex,
   PRIMARY_RGB: hexToRgb(primaryColor),
@@ -132,4 +255,5 @@ export const SITE_CONFIG: SiteConfig = {
   PRIMARY_NICHE: resolvePrimaryNiche(),
   AD_PHASE: ((process.env.NEXT_PUBLIC_AD_PHASE as AdPhase) || 'clean'),
   POPUNDER_COOLDOWN_MINUTES: Number(process.env.NEXT_PUBLIC_POPUNDER_COOLDOWN_MINUTES || 30),
+  TENANT_ID: detectTenantId(),
 };
