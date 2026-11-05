@@ -60,60 +60,53 @@ function parseEmbedTelemetry(data: any): { currentTime: number; duration?: numbe
   }
   if (!obj || typeof obj !== 'object') return null;
 
-  // 1. VidLink PLAYER_EVENT: { type: 'PLAYER_EVENT', data: { event: 'timeupdate', currentTime: number, duration: number } }
-  if (obj.type === 'PLAYER_EVENT' && obj.data) {
-    const time = obj.data.currentTime ?? obj.data.progress;
-    if (typeof time === 'number' && !isNaN(time)) {
-      return { currentTime: time, duration: obj.data.duration };
+  // 1. VidLink PLAYER_EVENT: { type: 'PLAYER_EVENT', data: { event: 'timeupdate'|'pause'|'play'|'seeked', currentTime: number, duration: number } }
+  if (obj.type === 'PLAYER_EVENT' && obj.data && typeof obj.data === 'object') {
+    const rawTime = obj.data.currentTime;
+    const rawDuration = typeof obj.data.duration === 'number' && !isNaN(obj.data.duration) ? obj.data.duration : undefined;
+
+    if (typeof rawTime === 'number' && !isNaN(rawTime)) {
+      return { currentTime: rawTime, duration: rawDuration };
     }
   }
 
   // 2. FrameXTV: event: 'frameXTV:timeupdate'
-  if (obj.event === 'frameXTV:timeupdate' && typeof obj.currentTime === 'number') {
-    return { currentTime: obj.currentTime, duration: obj.duration };
+  if (obj.event === 'frameXTV:timeupdate' && typeof obj.currentTime === 'number' && !isNaN(obj.currentTime)) {
+    const rawDuration = typeof obj.duration === 'number' && !isNaN(obj.duration) ? obj.duration : undefined;
+    return { currentTime: obj.currentTime, duration: rawDuration };
   }
 
-  // 3. VidLink MEDIA_DATA / MEDIA_TIME
-  if (obj.type === 'MEDIA_DATA' || obj.type === 'MEDIA_TIME') {
-    const directTime = obj.data?.currentTime ?? obj.currentTime ?? obj.data?.time ?? obj.progress;
-    if (typeof directTime === 'number' && !isNaN(directTime)) {
-      return { currentTime: directTime, duration: obj.data?.duration ?? obj.duration };
-    }
-    if (obj.data?.progress && typeof obj.data.progress.watched === 'number') {
-      return { currentTime: obj.data.progress.watched, duration: obj.data.progress.duration };
-    }
-    if (obj.data && typeof obj.data === 'object') {
-      for (const k of Object.keys(obj.data)) {
-        const item = obj.data[k];
-        if (item?.progress && typeof item.progress.watched === 'number') {
-          return { currentTime: item.progress.watched, duration: item.progress.duration };
-        }
-        if (item?.show_progress) {
-          for (const epKey of Object.keys(item.show_progress)) {
-            const ep = item.show_progress[epKey];
-            if (ep?.progress && typeof ep.progress.watched === 'number') {
-              return { currentTime: ep.progress.watched, duration: ep.progress.duration };
-            }
-          }
-        }
-      }
-    }
-  }
-
-  // 4. Generic HTML5 / Player.js / JWPlayer (event: 'timeupdate' or 'time')
+  // 3. Generic HTML5 / Player.js / JWPlayer (event: 'timeupdate' or 'time')
   if (obj.event === 'timeupdate' || obj.event === 'time') {
+    const rawDuration =
+      typeof obj.duration === 'number'
+        ? obj.duration
+        : typeof obj.value?.duration === 'number'
+        ? obj.value.duration
+        : undefined;
+
     const time =
       typeof obj.value === 'number'
         ? obj.value
-        : obj.value?.seconds ?? obj.value?.currentTime ?? obj.currentTime ?? obj.seconds ?? obj.time;
+        : typeof obj.value?.seconds === 'number'
+        ? obj.value.seconds
+        : typeof obj.value?.currentTime === 'number'
+        ? obj.value.currentTime
+        : typeof obj.currentTime === 'number'
+        ? obj.currentTime
+        : typeof obj.seconds === 'number'
+        ? obj.seconds
+        : undefined;
+
     if (typeof time === 'number' && !isNaN(time)) {
-      return { currentTime: time, duration: obj.value?.duration ?? obj.duration };
+      return { currentTime: time, duration: rawDuration };
     }
   }
 
-  // 5. Direct properties on data object
+  // 4. Direct property on data object ONLY if explicitly currentTime (never duration or progress)
   if (typeof obj.currentTime === 'number' && !isNaN(obj.currentTime) && obj.currentTime > 0) {
-    return { currentTime: obj.currentTime, duration: obj.duration };
+    const rawDuration = typeof obj.duration === 'number' ? obj.duration : undefined;
+    return { currentTime: obj.currentTime, duration: rawDuration };
   }
 
   return null;
@@ -371,6 +364,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const [hostPlaybackSeconds, setHostPlaybackSeconds] = useState<number>(0);
   const [appliedTimestampSeconds, setAppliedTimestampSeconds] = useState<number | undefined>(undefined);
   const [justSynced, setJustSynced] = useState(false);
+  const lastKnownTimeRef = useRef<number>(0);
   const lastReportedTimeRef = useRef<number>(0);
   const lastReportedAtRef = useRef<number>(0);
   const lastSeekVersionRef = useRef<number | undefined>(undefined);
@@ -387,13 +381,30 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
         const currentSeconds = Math.floor(telemetry.currentTime);
         if (currentSeconds <= 0) return;
 
+        const durationSeconds = telemetry.duration ? Math.floor(telemetry.duration) : 0;
+
+        // CRITICAL GUARD: Prevent erroneous jump to maximum length / duration on pause
+        // If incoming seconds jumps to the total media duration (or within 2s of duration)
+        // while the user was previously at a much earlier timestamp, reject this anomalous jump!
+        if (
+          durationSeconds > 60 &&
+          Math.abs(currentSeconds - durationSeconds) <= 2 &&
+          lastKnownTimeRef.current > 0 &&
+          Math.abs(currentSeconds - lastKnownTimeRef.current) > 10
+        ) {
+          // Reject duration leak on pause - keep existing playback time!
+          return;
+        }
+
+        lastKnownTimeRef.current = currentSeconds;
+
         // Save local backup
         try {
           localStorage.setItem(
             `party_telemetry_${roomId}`,
             JSON.stringify({
               currentTime: currentSeconds,
-              duration: Math.floor(telemetry.duration || 0),
+              duration: durationSeconds,
               updatedAt: Date.now(),
             })
           );
@@ -625,6 +636,19 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     const action = isCurrentlyPaused ? 'resume' : 'pause';
 
     try {
+      try {
+        const iframe = document.querySelector('iframe');
+        if (iframe && iframe.contentWindow) {
+          if (!isCurrentlyPaused) {
+            iframe.contentWindow.postMessage({ action: 'pause' }, '*');
+            iframe.contentWindow.postMessage({ type: 'pause' }, '*');
+          } else {
+            iframe.contentWindow.postMessage({ action: 'play' }, '*');
+            iframe.contentWindow.postMessage({ type: 'play' }, '*');
+          }
+        }
+      } catch {}
+
       await fetch(`/api/party/${roomId}/playback`, {
         method: 'POST',
         headers: {
@@ -676,6 +700,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
 
       if (targetSecs > 0) {
         setHostPlaybackSeconds(targetSecs);
+        lastKnownTimeRef.current = targetSecs;
+        lastReportedTimeRef.current = targetSecs;
         setAppliedTimestampSeconds(targetSecs);
         setIframeKey((k) => k + 1);
 
