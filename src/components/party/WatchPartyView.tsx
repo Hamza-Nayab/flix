@@ -36,6 +36,62 @@ import { PartyMedia, ChatMessage, PartyPlaybackState } from '@/lib/partyStore';
 import CustomHlsPlayer from '@/components/player/CustomHlsPlayer';
 import { SITE_CONFIG } from '@/lib/siteConfig';
 
+function formatSecondsToTimestamp(totalSeconds: number): string {
+  if (isNaN(totalSeconds) || totalSeconds < 0) return '00:00';
+  const hours = Math.floor(totalSeconds / 3600);
+  const minutes = Math.floor((totalSeconds % 3600) / 60);
+  const seconds = Math.floor(totalSeconds % 60);
+
+  if (hours > 0) {
+    return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+  }
+  return `${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+}
+
+function parseEmbedTelemetry(data: any): { currentTime: number; duration?: number } | null {
+  if (!data) return null;
+  let obj = data;
+  if (typeof obj === 'string') {
+    try {
+      obj = JSON.parse(obj);
+    } catch {
+      return null;
+    }
+  }
+  if (!obj || typeof obj !== 'object') return null;
+
+  // 1. FrameXTV: event: 'frameXTV:timeupdate'
+  if (obj.event === 'frameXTV:timeupdate' && typeof obj.currentTime === 'number') {
+    return { currentTime: obj.currentTime, duration: obj.duration };
+  }
+
+  // 2. VidLink & VidLink MEDIA_DATA / MEDIA_TIME
+  if (obj.type === 'MEDIA_DATA' || obj.type === 'MEDIA_TIME') {
+    const time = obj.data?.currentTime ?? obj.currentTime ?? obj.data?.time ?? obj.progress;
+    if (typeof time === 'number' && !isNaN(time)) {
+      return { currentTime: time, duration: obj.data?.duration ?? obj.duration };
+    }
+  }
+
+  // 3. Generic HTML5 / Player.js / JWPlayer (event: 'timeupdate' or 'time')
+  if (obj.event === 'timeupdate' || obj.event === 'time') {
+    const time =
+      typeof obj.value === 'number'
+        ? obj.value
+        : obj.value?.seconds ?? obj.value?.currentTime ?? obj.currentTime ?? obj.seconds ?? obj.time;
+    if (typeof time === 'number' && !isNaN(time)) {
+      return { currentTime: time, duration: obj.value?.duration ?? obj.duration };
+    }
+  }
+
+  // 4. Direct properties on data object
+  if (typeof obj.currentTime === 'number' && !isNaN(obj.currentTime) && obj.currentTime > 0) {
+    return { currentTime: obj.currentTime, duration: obj.duration };
+  }
+
+  return null;
+}
+
 interface WatchPartyViewProps {
   roomId: string;
 }
@@ -284,25 +340,68 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     };
   }, []);
 
-  // FrameXTV postMessage Telemetry Listener for Watch Party Timestamp Syncing
+  // State for live playback telemetry and synchronization
+  const [hostPlaybackSeconds, setHostPlaybackSeconds] = useState<number>(0);
+  const [appliedTimestampSeconds, setAppliedTimestampSeconds] = useState<number | undefined>(undefined);
+  const [justSynced, setJustSynced] = useState(false);
+  const lastReportedTimeRef = useRef<number>(0);
+  const lastReportedAtRef = useRef<number>(0);
+  const lastSeekVersionRef = useRef<number | undefined>(undefined);
+
+  // Cross-Origin postMessage Telemetry Listener for Watch Party Timestamp Syncing
   useEffect(() => {
     if (typeof window === 'undefined') return;
 
     const handleMessage = (event: MessageEvent) => {
       try {
-        const data = event.data;
-        if (!data || typeof data !== 'object') return;
+        const telemetry = parseEmbedTelemetry(event.data);
+        if (!telemetry || typeof telemetry.currentTime !== 'number') return;
 
-        if (data.event === 'frameXTV:timeupdate' && typeof data.currentTime === 'number') {
-          const currentTime = Math.floor(data.currentTime);
-          if (currentTime > 0) {
-            try {
-              localStorage.setItem(`party_telemetry_${roomId}`, JSON.stringify({
-                currentTime,
-                duration: Math.floor(data.duration || 0),
-                updatedAt: Date.now(),
-              }));
-            } catch {}
+        const currentSeconds = Math.floor(telemetry.currentTime);
+        if (currentSeconds <= 0) return;
+
+        // Save local backup
+        try {
+          localStorage.setItem(
+            `party_telemetry_${roomId}`,
+            JSON.stringify({
+              currentTime: currentSeconds,
+              duration: Math.floor(telemetry.duration || 0),
+              updatedAt: Date.now(),
+            })
+          );
+        } catch {}
+
+        // If this user is the room host, update local display time and broadcast to party backend
+        const currentHostToken =
+          hostToken ||
+          (typeof window !== 'undefined'
+            ? sessionStorage.getItem(`roseflix_party_host_${roomId}`)
+            : null);
+
+        if (currentHostToken) {
+          setHostPlaybackSeconds(currentSeconds);
+
+          const now = Date.now();
+          const timeDiff = Math.abs(currentSeconds - lastReportedTimeRef.current);
+          const elapsed = now - lastReportedAtRef.current;
+
+          // Throttled broadcast: every 4 seconds, or immediately on large jump (> 5 seconds)
+          if (elapsed > 4000 || timeDiff > 5) {
+            lastReportedTimeRef.current = currentSeconds;
+            lastReportedAtRef.current = now;
+
+            fetch(`/api/party/${roomId}/playback`, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'x-host-token': currentHostToken,
+              },
+              body: JSON.stringify({
+                action: 'telemetry',
+                timestampSeconds: currentSeconds,
+              }),
+            }).catch(() => {});
           }
         }
       } catch {
@@ -314,13 +413,12 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     return () => {
       window.removeEventListener('message', handleMessage);
     };
-  }, [roomId]);
+  }, [roomId, hostToken]);
 
   // Playback sync controls
   const [timestampInput, setTimestampInput] = useState('');
   const [isSyncingPlayback, setIsSyncingPlayback] = useState(false);
   const [iframeKey, setIframeKey] = useState(0);
-  const lastSyncedTimeRef = useRef<number | undefined>(undefined);
 
   const chatContainerRef = useRef<HTMLDivElement>(null);
 
@@ -356,14 +454,17 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
           setError('This temporary watch party has ended.');
         }
 
-        // Detect if timestamp was synced to reload the iframe at the new timestamp
+        // Detect explicit host seek via seekVersion to jump/reload all viewers to the new seek point
         if (
-          data.playback?.timestampSeconds !== undefined &&
-          data.playback.timestampSeconds > 0 &&
-          data.playback.timestampSeconds !== lastSyncedTimeRef.current
+          data.playback?.seekVersion !== undefined &&
+          data.playback.seekVersion > 0 &&
+          data.playback.seekVersion !== lastSeekVersionRef.current
         ) {
-          lastSyncedTimeRef.current = data.playback.timestampSeconds;
-          setIframeKey((k) => k + 1);
+          lastSeekVersionRef.current = data.playback.seekVersion;
+          if (data.playback.timestampSeconds !== undefined && data.playback.timestampSeconds > 0) {
+            setAppliedTimestampSeconds(data.playback.timestampSeconds);
+            setIframeKey((k) => k + 1);
+          }
         }
       } catch (err) {
         console.error('Error parsing SSE room update:', err);
@@ -502,7 +603,10 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
           'Content-Type': 'application/json',
           'x-host-token': currentToken,
         },
-        body: JSON.stringify({ action }),
+        body: JSON.stringify({
+          action,
+          timestampSeconds: hostPlaybackSeconds > 0 ? hostPlaybackSeconds : undefined,
+        }),
       });
     } catch (err) {
       console.error('Failed to toggle pause/resume:', err);
@@ -518,6 +622,17 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
 
     setIsSyncingPlayback(true);
     try {
+      const rawText = timestampInput.trim();
+      let targetSecs = 0;
+      const parts = rawText.split(':').map(Number);
+      if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+        targetSecs = parts[0] * 60 + parts[1];
+      } else if (parts.length === 3 && !isNaN(parts[0]) && !isNaN(parts[1]) && !isNaN(parts[2])) {
+        targetSecs = parts[0] * 3600 + parts[1] * 60 + parts[2];
+      } else if (!isNaN(Number(rawText)) && rawText !== '') {
+        targetSecs = Math.max(0, Number(rawText));
+      }
+
       await fetch(`/api/party/${roomId}/playback`, {
         method: 'POST',
         headers: {
@@ -525,15 +640,47 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
           'x-host-token': currentToken,
         },
         body: JSON.stringify({
-          action: 'timestamp',
-          timestamp: timestampInput.trim(),
+          action: 'seek',
+          timestamp: rawText,
+          timestampSeconds: targetSecs > 0 ? targetSecs : undefined,
         }),
       });
+
+      if (targetSecs > 0) {
+        setHostPlaybackSeconds(targetSecs);
+        setAppliedTimestampSeconds(targetSecs);
+        setIframeKey((k) => k + 1);
+
+        try {
+          const iframe = document.querySelector('iframe');
+          if (iframe && iframe.contentWindow) {
+            iframe.contentWindow.postMessage({ action: 'seek', time: targetSecs }, '*');
+          }
+        } catch {}
+      }
+
       setTimestampInput('');
     } catch (err) {
       console.error('Failed to sync timestamp:', err);
     } finally {
       setIsSyncingPlayback(false);
+    }
+  };
+
+  const handleGuestSyncToHost = () => {
+    const targetSeconds = roomData?.playback?.timestampSeconds;
+    if (typeof targetSeconds === 'number' && targetSeconds >= 0) {
+      setAppliedTimestampSeconds(targetSeconds);
+      setIframeKey((k) => k + 1);
+      setJustSynced(true);
+      setTimeout(() => setJustSynced(false), 2000);
+
+      try {
+        const iframe = document.querySelector('iframe');
+        if (iframe && iframe.contentWindow) {
+          iframe.contentWindow.postMessage({ action: 'seek', time: targetSeconds }, '*');
+        }
+      } catch {}
     }
   };
 
@@ -703,6 +850,13 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     ? `/watch/movie/${media.tmdbId}`
     : `/watch/tv/${media.tmdbId}?s=${currentSeason}&e=${currentEpisode}`;
 
+  // Determine seek/jump timestamp:
+  // For host: uses explicit manual seek timestamp if set, else undefined (host plays live)
+  // For guest: uses applied timestamp when guest clicks "Sync to Host" or when host triggers an explicit seek
+  const activeTimestampSeconds = isHost
+    ? appliedTimestampSeconds
+    : (appliedTimestampSeconds ?? (playback?.timestampSeconds && playback.timestampSeconds > 0 ? playback.timestampSeconds : undefined));
+
   const currentEmbedUrl = isAnime
     ? getAnimeEmbedUrl(
         activeServer,
@@ -710,20 +864,28 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
         currentSeason,
         currentEpisode,
         currentSubOrDub,
-        isMovie
+        isMovie,
+        undefined,
+        activeTimestampSeconds
       )
     : getEmbedUrl(
         activeServer,
-        isMovie ? 'movie' : 'tv',
+        isKDrama ? 'kdrama' : (isMovie ? 'movie' : 'tv'),
         media.tmdbId,
         currentSeason,
         currentEpisode,
-        playback?.timestampSeconds
+        activeTimestampSeconds
       );
 
   const availableServers = isAnime ? ANIME_SERVERS : VIDEO_SERVERS;
   const isPaused = Boolean(playback?.isPaused);
   const isCountingDown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
+
+  // Live host timestamp: displays real-time seconds for host or synced SSE time for viewers
+  const displayHostTime =
+    isHost && hostPlaybackSeconds > 0
+      ? formatSecondsToTimestamp(hostPlaybackSeconds)
+      : playback?.timestampFormatted;
 
   return (
     <div className="min-h-screen pt-20 sm:pt-24 pb-16 max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -869,12 +1031,12 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                     }`}
                   />
                   {isPaused ? 'Stream Paused by Host' : 'Stream Active'}
-                  {playback?.timestampFormatted && (
+                  {displayHostTime && (
                     <span
-                      className="text-[11px] font-mono ml-1 px-1.5 py-0.5 rounded bg-white/5"
+                      className="text-[11px] font-mono ml-1 px-2 py-0.5 rounded-lg bg-white/10 border border-white/10 font-bold"
                       style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
                     >
-                      ⏱️ {playback.timestampFormatted}
+                      ⏱️ {displayHostTime}
                     </span>
                   )}
                 </span>
@@ -1070,19 +1232,23 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               </div>
             ) : (
               /* Guest Sync Status & Manual Jump Button */
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 <span className="text-[11px] text-slate-400 italic">
                   {isPaused ? 'Waiting for host to resume...' : 'Synchronized with host'}
                 </span>
                 {playback?.timestampFormatted && (
                   <button
-                    onClick={() => setIframeKey((k) => k + 1)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/15 transition-colors cursor-pointer"
-                    style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
-                    title="Reload player at host timestamp"
+                    onClick={handleGuestSyncToHost}
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md cursor-pointer"
+                    style={{
+                      backgroundColor: justSynced ? '#10b981' : SITE_CONFIG.PRIMARY_COLOR,
+                      color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                      boxShadow: justSynced ? '0 0 12px rgba(16,185,129,0.5)' : `0 0 12px rgba(${SITE_CONFIG.PRIMARY_RGB},0.4)`,
+                    }}
+                    title="Reload player to host's current playback timestamp"
                   >
-                    <RotateCcw className="w-3 h-3" />
-                    <span>Sync to {playback.timestampFormatted}</span>
+                    <RotateCcw className={`w-3.5 h-3.5 ${justSynced ? 'animate-spin' : ''}`} />
+                    <span>{justSynced ? 'Synced!' : `Sync to ${playback.timestampFormatted}`}</span>
                   </button>
                 )}
               </div>

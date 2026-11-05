@@ -355,8 +355,9 @@ export function getEmbedUrl(
   }
 
   if (timeSeconds && timeSeconds > 0) {
+    const s = Math.floor(timeSeconds);
     const separator = baseUrl.includes('?') ? '&' : '?';
-    return `${baseUrl}${separator}t=${Math.floor(timeSeconds)}`;
+    return `${baseUrl}${separator}t=${s}&start=${s}`;
   }
   return baseUrl;
 }
@@ -371,7 +372,8 @@ export function getAnimeEmbedUrl(
   episodeOrSubOrDub: number | 'sub' | 'dub' = 1,
   subOrDubParam: 'sub' | 'dub' = 'sub',
   isMovie: boolean = false,
-  bridgeOptions?: AnimeBridgeOptions
+  bridgeOptions?: AnimeBridgeOptions,
+  timeSeconds?: number
 ): string {
   let season = 1;
   let episode = 1;
@@ -390,5 +392,11 @@ export function getAnimeEmbedUrl(
   }
 
   const server = ANIME_SERVERS.find((s) => s.id === serverId) || ANIME_SERVERS[0];
-  return server.getAnimeUrl(id, season, episode, subOrDub, movie, bridgeOptions);
+  let url = server.getAnimeUrl(id, season, episode, subOrDub, movie, bridgeOptions);
+  if (timeSeconds && timeSeconds > 0) {
+    const s = Math.floor(timeSeconds);
+    const separator = url.includes('?') ? '&' : '?';
+    url = `${url}${separator}t=${s}&start=${s}`;
+  }
+  return url;
 }

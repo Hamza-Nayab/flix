@@ -27,6 +27,7 @@ export interface PartyPlaybackState {
   countdownEnd?: number | null;
   timestampSeconds?: number;
   timestampFormatted?: string;
+  seekVersion?: number;
   updatedAt: number;
 }
 
@@ -338,42 +339,50 @@ export function updatePartyPlayback(
     countdownEnd?: number | null;
     timestampSeconds?: number;
     timestampFormatted?: string;
+    seekVersion?: number;
+    silent?: boolean;
   }
 ): boolean {
   const room = partyStore.get(roomId);
   if (!room || room.hostToken !== hostToken) return false;
 
+  const { silent, ...playbackUpdates } = data;
+
   room.playback = {
     ...room.playback,
-    ...data,
+    ...playbackUpdates,
     updatedAt: Date.now(),
   };
 
-  // Add automated announcements in room chat
-  if (data.timestampFormatted) {
-    room.messages.push({
-      id: `sys_time_${Date.now()}`,
-      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
-      text: `Host synchronized playback to timestamp ${data.timestampFormatted}.`,
-      timestamp: Date.now(),
-      isHost: false,
-    });
-  } else if (data.isPaused === true) {
-    room.messages.push({
-      id: `sys_pause_${Date.now()}`,
-      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
-      text: `Host paused the session for all participants.`,
-      timestamp: Date.now(),
-      isHost: false,
-    });
-  } else if (data.countdownEnd) {
-    room.messages.push({
-      id: `sys_resume_${Date.now()}`,
-      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
-      text: `Host resumed streaming. 3-second synchronized countdown started!`,
-      timestamp: Date.now(),
-      isHost: false,
-    });
+  // Add automated announcements in room chat only when not silent
+  if (!silent) {
+    if (data.seekVersion !== undefined && data.timestampFormatted) {
+      room.messages.push({
+        id: `sys_time_${Date.now()}`,
+        sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+        text: `Host synchronized playback to timestamp ${data.timestampFormatted}.`,
+        timestamp: Date.now(),
+        isHost: false,
+      });
+    } else if (data.isPaused === true) {
+      room.messages.push({
+        id: `sys_pause_${Date.now()}`,
+        sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+        text: `Host paused the session for all participants${
+          data.timestampFormatted ? ` at ${data.timestampFormatted}` : ''
+        }.`,
+        timestamp: Date.now(),
+        isHost: false,
+      });
+    } else if (data.countdownEnd) {
+      room.messages.push({
+        id: `sys_resume_${Date.now()}`,
+        sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+        text: `Host resumed streaming. 3-second synchronized countdown started!`,
+        timestamp: Date.now(),
+        isHost: false,
+      });
+    }
   }
 
   notifyRoomUpdate(roomId);
