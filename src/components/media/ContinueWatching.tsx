@@ -5,6 +5,7 @@ import Link from 'next/link';
 import Image from 'next/image';
 import { Play, Clock, X } from 'lucide-react';
 import { getTMDBImageUrl } from '@/lib/utils';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 export interface WatchHistoryItem {
   id: number | string;
@@ -47,7 +48,7 @@ export default function ContinueWatching() {
   return (
     <section className="my-8 px-4 sm:px-6 lg:px-8 max-w-7xl mx-auto">
       <div className="flex items-center gap-2.5 mb-4">
-        <Clock className="w-5 h-5 text-[#FF1E56]" />
+        <Clock className="w-5 h-5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
         <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white">
           Continue Watching
         </h2>
@@ -63,7 +64,10 @@ export default function ContinueWatching() {
           return (
             <div
               key={`${item.type}-${item.id}`}
-              className="group/continue relative rounded-xl overflow-hidden bg-[#111116] border border-white/5 hover:border-[#FF1E56]/40 transition-all hover:-translate-y-1"
+              className="group/continue relative rounded-xl overflow-hidden bg-[#111116] border border-white/5 transition-all hover:-translate-y-1"
+              style={{
+                ['--hover-border' as any]: `${SITE_CONFIG.PRIMARY_COLOR}66`,
+              }}
             >
               <Link href={watchHref} className="block relative aspect-[2/3] w-full">
                 <Image
@@ -76,12 +80,25 @@ export default function ContinueWatching() {
 
                 {/* Progress bar */}
                 <div className="absolute bottom-0 left-0 right-0 h-1 bg-white/20">
-                  <div className="h-full bg-[#FF1E56] w-2/3 shadow-[0_0_8px_rgba(255,30,86,0.8)]" />
+                  <div
+                    className="h-full w-2/3 shadow-md"
+                    style={{
+                      backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                      boxShadow: `0 0 8px ${SITE_CONFIG.PRIMARY_COLOR}`,
+                    }}
+                  />
                 </div>
 
                 <div className="absolute inset-0 bg-black/40 opacity-0 group-hover/continue:opacity-100 transition-opacity flex items-center justify-center">
-                  <div className="w-10 h-10 rounded-full bg-[#FF1E56] text-white flex items-center justify-center shadow-lg">
-                    <Play className="w-4 h-4 fill-white ml-0.5" />
+                  <div
+                    className="w-10 h-10 rounded-full flex items-center justify-center shadow-lg transition-transform group-hover/continue:scale-110"
+                    style={{
+                      backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                      color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                      boxShadow: `0 0 15px ${SITE_CONFIG.PRIMARY_COLOR}99`,
+                    }}
+                  >
+                    <Play className="w-4 h-4 fill-current ml-0.5" />
                   </div>
                 </div>
               </Link>
@@ -97,7 +114,10 @@ export default function ContinueWatching() {
 
               <div className="p-2.5 bg-[#0e0e13]">
                 <h4 className="text-xs font-semibold text-white truncate">{item.title}</h4>
-                <p className="text-[11px] text-[#FF85A1] mt-0.5">
+                <p
+                  className="text-[11px] font-medium mt-0.5"
+                  style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+                >
                   {item.type === 'movie'
                     ? 'Resume Movie'
                     : `S${item.season || 1} : E${item.episode || 1}`}

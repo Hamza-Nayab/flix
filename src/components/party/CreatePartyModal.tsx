@@ -6,6 +6,7 @@ import Image from 'next/image';
 import { Users, X, Sparkles, Loader2, Link2, ShieldAlert } from 'lucide-react';
 import { PartyMedia } from '@/lib/partyStore';
 import { getTMDBImageUrl } from '@/lib/utils';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface CreatePartyModalProps {
   isOpen: boolean;
@@ -68,12 +69,19 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
         {/* Header */}
         <div className="flex items-center justify-between pb-3 border-b border-white/10">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-[#FF1E56] to-[#FF007F] flex items-center justify-center shadow-[0_0_15px_rgba(255,30,86,0.6)]">
-              <Users className="w-5 h-5 text-white" />
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center shadow-lg"
+              style={{
+                background: `linear-gradient(135deg, ${SITE_CONFIG.PRIMARY_COLOR}, ${SITE_CONFIG.PRIMARY_GRADIENT_TO})`,
+                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                boxShadow: `0 0 15px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+              }}
+            >
+              <Users className="w-5 h-5" style={{ color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT }} />
             </div>
             <div>
               <h3 className="text-lg font-bold text-white">Watch Together</h3>
-              <p className="text-xs text-[#FF85A1]">Generate a temporary sync room</p>
+              <p className="text-xs" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>Generate a temporary sync room</p>
             </div>
           </div>
           <button
@@ -97,7 +105,7 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
             )}
           </div>
           <div className="min-w-0 flex-1">
-            <span className="text-[10px] font-bold uppercase tracking-wider text-[#FF1E56]">
+            <span className="text-[10px] font-bold uppercase tracking-wider" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>
               {media.type === 'movie' ? 'Movie' : `Season ${media.season} Episode ${media.episode}`}
             </span>
             <h4 className="text-sm font-semibold text-white truncate">{media.title}</h4>
@@ -116,20 +124,24 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
             maxLength={25}
             onChange={(e) => setHostName(e.target.value)}
             placeholder="e.g. Alex, CinemaFan"
-            className="w-full px-4 py-3 rounded-xl bg-[#14141c] border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none focus:border-[#FF1E56] transition-colors"
+            className="w-full px-4 py-3 rounded-xl bg-[#14141c] border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none transition-colors"
+            style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
           />
         </div>
 
         {/* Temporary Room Rule Notice */}
-        <div className="flex items-start gap-2.5 p-3 rounded-xl bg-[#191116] border border-[#FF1E56]/30 text-xs text-slate-300">
-          <ShieldAlert className="w-4 h-4 text-[#FF1E56] shrink-0 mt-0.5" />
+        <div
+          className="flex items-start gap-2.5 p-3 rounded-xl bg-[#191116] text-xs text-slate-300 border"
+          style={{ borderColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.3)` }}
+        >
+          <ShieldAlert className="w-4 h-4 shrink-0 mt-0.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
           <p className="leading-relaxed">
             <strong className="text-white">Host Session Rule:</strong> This link is temporary and requires zero login. When you (the creator) leave the party or close the page, the room automatically expires for all friends.
           </p>
         </div>
 
         {error && (
-          <p className="text-xs text-[#FF1E56] bg-red-500/10 p-2.5 rounded-lg border border-red-500/20">
+          <p className="text-xs bg-red-500/10 p-2.5 rounded-lg border border-red-500/20 text-red-400">
             {error}
           </p>
         )}
@@ -145,7 +157,12 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
           <button
             onClick={handleCreate}
             disabled={creating}
-            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-[#FF1E56] to-[#D90429] hover:from-[#FF007F] hover:to-[#FF1E56] shadow-[0_0_20px_rgba(255,30,86,0.6)] disabled:opacity-50 transition-all cursor-pointer"
+            className="flex items-center gap-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg disabled:opacity-50 transition-all cursor-pointer"
+            style={{
+              background: `linear-gradient(to right, ${SITE_CONFIG.PRIMARY_COLOR}, ${SITE_CONFIG.PRIMARY_GRADIENT_TO})`,
+              color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+              boxShadow: `0 0 20px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+            }}
           >
             {creating ? (
               <>

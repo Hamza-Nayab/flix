@@ -8,18 +8,19 @@
   --color-obsidian-700: #1a1a24;
   --color-obsidian-600: #252533;
 
-  --color-neon-rose: #FF1E56;
-  --color-neon-magenta: #FF007F;
-  --color-neon-crimson: #D90429;
-  --color-neon-pink-soft: #FF85A1;
+  --color-neon-rose: var(--primary-color, #FF1E56);
+  --color-brand-primary: var(--primary-color, #FF1E56);
+  --color-neon-magenta: var(--primary-gradient-to, #D90429);
+  --color-neon-crimson: var(--primary-gradient-to, #D90429);
+  --color-neon-pink-soft: var(--primary-color, #FF85A1);
 
   --color-text-primary: #F8F9FA;
   --color-text-secondary: #94A3B8;
   --color-text-muted: #64748B;
 
-  --shadow-neon-glow: 0 0 25px -5px rgba(255, 30, 86, 0.45);
-  --shadow-neon-glow-lg: 0 0 35px -5px rgba(255, 30, 86, 0.6);
-  --shadow-card-hover: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px -3px rgba(255, 30, 86, 0.35);
+  --shadow-neon-glow: 0 0 25px -5px rgba(var(--primary-rgb, 255, 30, 86), 0.45);
+  --shadow-neon-glow-lg: 0 0 35px -5px rgba(var(--primary-rgb, 255, 30, 86), 0.6);
+  --shadow-card-hover: 0 10px 30px -10px rgba(0, 0, 0, 0.8), 0 0 20px -3px rgba(var(--primary-rgb, 255, 30, 86), 0.35);
 
   --font-heading: var(--font-outfit), system-ui, sans-serif;
   --font-body: var(--font-inter), system-ui, sans-serif;
@@ -28,6 +29,10 @@
 :root {
   --background: #070709;
   --foreground: #F8F9FA;
+  --primary-color: #FF1E56;
+  --primary-rgb: 255, 30, 86;
+  --primary-contrast-text: #ffffff;
+  --primary-gradient-to: #D90429;
 }
 
 * {
@@ -48,7 +53,13 @@ body {
   min-height: 100vh;
 }
 
-/* Custom Obsidian & Rose Scrollbars */
+/* Dynamic Selection Highlighting */
+::selection {
+  background-color: var(--primary-color, #FF1E56);
+  color: var(--primary-contrast-text, #ffffff);
+}
+
+/* Custom Obsidian & Dynamic Brand Scrollbars */
 ::-webkit-scrollbar {
   width: 8px;
   height: 8px;
@@ -65,7 +76,7 @@ body {
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #FF1E56;
+  background: var(--primary-color, #FF1E56);
 }
 
 /* Hide scrollbar utility for carousels */
@@ -77,7 +88,7 @@ body {
   scrollbar-width: none;
 }
 
-/* Glassmorphism helpers */
+/* Glassmorphism helpers with Dynamic Glow */
 .glass-nav {
   background: rgba(11, 11, 14, 0.8);
   backdrop-filter: blur(16px);
@@ -91,38 +102,39 @@ body {
 }
 
 .glass-card:hover {
-  border-color: rgba(255, 30, 86, 0.3);
+  border-color: rgba(var(--primary-rgb, 255, 30, 86), 0.4);
 }
 
 .glass-modal {
   background: rgba(14, 14, 19, 0.95);
   backdrop-filter: blur(24px);
   -webkit-backdrop-filter: blur(24px);
-  border: 1px solid rgba(255, 30, 86, 0.2);
+  border: 1px solid rgba(var(--primary-rgb, 255, 30, 86), 0.25);
 }
 
 /* Text Gradients */
 .text-gradient-rose {
-  background: linear-gradient(135deg, #FFFFFF 0%, #FF85A1 50%, #FF1E56 100%);
+  background: linear-gradient(135deg, #FFFFFF 0%, var(--primary-color, #FF1E56) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
 .text-gradient-neon {
-  background: linear-gradient(135deg, #FF1E56 0%, #FF007F 100%);
+  background: linear-gradient(135deg, var(--primary-color, #FF1E56) 0%, var(--primary-gradient-to, #D90429) 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
 }
 
-/* Neon button styles */
+/* Dynamic Brand button styles */
 .btn-neon-rose {
-  background: linear-gradient(135deg, #FF1E56 0%, #D90429 100%);
-  box-shadow: 0 0 20px -3px rgba(255, 30, 86, 0.5);
+  background: linear-gradient(135deg, var(--primary-color, #FF1E56) 0%, var(--primary-gradient-to, #D90429) 100%);
+  color: var(--primary-contrast-text, #ffffff);
+  box-shadow: 0 0 20px -3px rgba(var(--primary-rgb, 255, 30, 86), 0.5);
   transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .btn-neon-rose:hover {
-  box-shadow: 0 0 30px 2px rgba(255, 30, 86, 0.75);
+  box-shadow: 0 0 30px 2px rgba(var(--primary-rgb, 255, 30, 86), 0.75);
   transform: translateY(-1px);
 }
 
@@ -145,4 +157,10 @@ body {
   );
   background-size: 200% 100%;
   animation: shimmer 1.8s infinite linear;
+}
+
+/* 60FPS Layout Containment for Off-Screen Carousels */
+.content-visibility-auto {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 340px;
 }

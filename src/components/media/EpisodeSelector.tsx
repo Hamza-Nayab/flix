@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { ChevronDown, Play, Clock, Star, Tv } from 'lucide-react';
 import { SeasonSummary, Episode, SeasonDetails } from '@/types/tmdb';
 import { getTMDBImageUrl, formatRuntime, formatRating } from '@/lib/utils';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface EpisodeSelectorProps {
   tvId: number | string;
@@ -69,7 +70,7 @@ export default function EpisodeSelector({
       {/* Header with Season Selector Dropdown */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-4 border-b border-white/5">
         <div className="flex items-center gap-2.5">
-          <Tv className="w-5 h-5 text-[#FF1E56]" />
+          <Tv className="w-5 h-5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
           <h3 className="text-lg font-bold text-white">Episodes & Seasons</h3>
         </div>
 
@@ -78,7 +79,8 @@ export default function EpisodeSelector({
           <select
             value={selectedSeasonNumber}
             onChange={(e) => setSelectedSeasonNumber(Number(e.target.value))}
-            className="appearance-none bg-[#161620] text-white text-sm font-semibold py-2.5 pl-4 pr-10 rounded-xl border border-white/10 hover:border-[#FF1E56]/50 focus:outline-none focus:border-[#FF1E56] transition-colors cursor-pointer"
+            className="appearance-none bg-[#161620] text-white text-sm font-semibold py-2.5 pl-4 pr-10 rounded-xl border border-white/10 focus:outline-none transition-colors cursor-pointer"
+            style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
           >
             {validSeasons.map((s) => (
               <option key={s.id} value={s.season_number} className="bg-[#111116] text-white">
@@ -110,9 +112,17 @@ export default function EpisodeSelector({
                   onClick={() => handleEpisodeClick(ep.episode_number)}
                   className={`flex gap-3 p-2.5 rounded-xl text-left transition-all ${
                     isCurrent
-                      ? 'bg-[#1a1a24] border-2 border-[#FF1E56] shadow-[0_0_15px_rgba(255,30,86,0.3)]'
+                      ? 'bg-[#1a1a24] border-2 shadow-lg'
                       : 'bg-[#111116] border border-white/5 hover:border-white/20 hover:bg-[#161620]'
                   }`}
+                  style={
+                    isCurrent
+                      ? {
+                          borderColor: SITE_CONFIG.PRIMARY_COLOR,
+                          boxShadow: `0 0 15px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.3)`,
+                        }
+                      : undefined
+                  }
                 >
                   {/* Episode Still Thumbnail */}
                   <div className="relative w-28 h-18 rounded-lg overflow-hidden shrink-0 bg-[#161620]">
@@ -124,16 +134,26 @@ export default function EpisodeSelector({
                       className="object-cover"
                     />
                     <div
-                      className={`absolute inset-0 flex items-center justify-center ${
-                        isCurrent ? 'bg-[#FF1E56]/40' : 'bg-black/30 hover:bg-black/10'
-                      }`}
+                      className="absolute inset-0 flex items-center justify-center"
+                      style={
+                        isCurrent
+                          ? { backgroundColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.4)` }
+                          : undefined
+                      }
                     >
                       <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center ${
-                          isCurrent ? 'bg-[#FF1E56] text-white shadow-md' : 'bg-black/60 text-white'
-                        }`}
+                        className="w-7 h-7 rounded-full flex items-center justify-center"
+                        style={
+                          isCurrent
+                            ? {
+                                backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                                boxShadow: `0 0 10px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+                              }
+                            : { backgroundColor: 'rgba(0, 0, 0, 0.6)', color: '#ffffff' }
+                        }
                       >
-                        <Play className="w-3.5 h-3.5 fill-white ml-0.5" />
+                        <Play className="w-3.5 h-3.5 ml-0.5" style={{ fill: isCurrent ? SITE_CONFIG.PRIMARY_CONTRAST_TEXT : '#ffffff' }} />
                       </div>
                     </div>
                   </div>
@@ -141,7 +161,10 @@ export default function EpisodeSelector({
                   {/* Details */}
                   <div className="flex-1 min-w-0 flex flex-col justify-between">
                     <div>
-                      <div className="flex items-center justify-between gap-1 text-[11px] font-bold text-[#FF85A1]">
+                      <div
+                        className="flex items-center justify-between gap-1 text-[11px] font-bold"
+                        style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+                      >
                         <span>EPISODE {ep.episode_number}</span>
                         {ep.runtime && (
                           <span className="flex items-center gap-1 text-slate-400 font-normal">

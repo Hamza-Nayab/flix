@@ -1,12 +1,16 @@
 import { EventEmitter } from 'events';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 export interface PartyMedia {
   tmdbId: number | string;
-  type: 'movie' | 'tv';
+  type: 'movie' | 'tv' | 'anime' | 'kdrama';
+  mediaType?: 'movie' | 'tv' | 'anime' | 'kdrama';
   title: string;
   backdropPath?: string | null;
   season?: number;
   episode?: number;
+  subOrDub?: 'sub' | 'dub';
+  customStreamUrl?: string;
 }
 
 export interface ChatMessage {
@@ -18,6 +22,7 @@ export interface ChatMessage {
 }
 
 export interface PartyPlaybackState {
+  isPlaying?: boolean;
   isPaused: boolean;
   countdownEnd?: number | null;
   timestampSeconds?: number;
@@ -43,6 +48,7 @@ export interface FormattedPartyState {
   roomId: string;
   hostName: string;
   media: PartyMedia;
+  mediaType?: 'movie' | 'tv' | 'anime' | 'kdrama';
   server: string;
   status: 'active' | 'ended';
   participantCount: number;
@@ -96,15 +102,26 @@ export function notifyRoomUpdate(roomId: string): void {
 }
 
 export function formatRoomState(room: PartyRoom, isHost: boolean = false): FormattedPartyState {
+  const effectiveMediaType = room.media.mediaType || room.media.type;
   return {
     roomId: room.roomId,
     hostName: room.hostName,
-    media: room.media,
+    media: {
+      ...room.media,
+      mediaType: effectiveMediaType,
+    },
+    mediaType: effectiveMediaType,
     server: room.server,
     status: room.status,
     participantCount: room.participantCount,
     messages: room.messages,
-    playback: room.playback || { isPaused: false, countdownEnd: null, timestampSeconds: 0, timestampFormatted: '00:00', updatedAt: Date.now() },
+    playback: room.playback || {
+      isPaused: false,
+      countdownEnd: null,
+      timestampSeconds: 0,
+      timestampFormatted: '00:00',
+      updatedAt: Date.now(),
+    },
     createdAt: room.createdAt,
     isHost,
   };
@@ -114,12 +131,23 @@ export function createPartyRoom(media: PartyMedia, hostName: string = 'Host'): P
   const roomId = generateRoomCode();
   const hostToken = `host_${Math.random().toString(36).substring(2)}${Date.now().toString(36)}`;
 
+  // Default server based on media type
+  const isAnime = media.type === 'anime' || media.mediaType === 'anime';
+  const defaultServer = isAnime ? 'anime-server-1' : 'server-1';
+
+  const normalizedMedia: PartyMedia = {
+    ...media,
+    mediaType: isAnime ? 'anime' : media.type,
+    subOrDub: media.subOrDub || 'sub',
+    episode: media.episode || 1,
+  };
+
   const newRoom: PartyRoom = {
     roomId,
     hostToken,
     hostName: hostName.trim() || 'Host',
-    media,
-    server: 'server-1',
+    media: normalizedMedia,
+    server: defaultServer,
     status: 'active',
     createdAt: Date.now(),
     lastHostHeartbeat: Date.now(),
@@ -241,7 +269,7 @@ export function addPartyMessage(
 
   room.messages.push(msg);
   if (room.messages.length > 100) {
-    room.messages.shift(); // keep memory lean
+    room.messages.shift();
   }
 
   notifyRoomUpdate(roomId);
@@ -256,10 +284,56 @@ export function updatePartyServer(roomId: string, hostToken: string, serverId: s
   return true;
 }
 
+export function updatePartyMedia(
+  roomId: string,
+  hostToken: string,
+  mediaUpdate: Partial<PartyMedia>
+): boolean {
+  const room = partyStore.get(roomId);
+  if (!room || room.hostToken !== hostToken) return false;
+
+  room.media = {
+    ...room.media,
+    ...mediaUpdate,
+  };
+
+  if (mediaUpdate.season !== undefined && mediaUpdate.episode !== undefined) {
+    room.messages.push({
+      id: `sys_ep_${Date.now()}`,
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+      text: `Host switched to Season ${mediaUpdate.season}, Episode ${mediaUpdate.episode}.`,
+      timestamp: Date.now(),
+      isHost: false,
+    });
+  } else if (mediaUpdate.episode !== undefined) {
+    room.messages.push({
+      id: `sys_ep_${Date.now()}`,
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+      text: `Host switched to Episode ${mediaUpdate.episode}${
+        mediaUpdate.subOrDub ? ` (${mediaUpdate.subOrDub.toUpperCase()})` : ''
+      }.`,
+      timestamp: Date.now(),
+      isHost: false,
+    });
+  } else if (mediaUpdate.subOrDub) {
+    room.messages.push({
+      id: `sys_audio_${Date.now()}`,
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
+      text: `Host switched audio track to ${mediaUpdate.subOrDub.toUpperCase()}.`,
+      timestamp: Date.now(),
+      isHost: false,
+    });
+  }
+
+  notifyRoomUpdate(roomId);
+  return true;
+}
+
 export function updatePartyPlayback(
   roomId: string,
   hostToken: string,
   data: {
+    isPlaying?: boolean;
     isPaused?: boolean;
     countdownEnd?: number | null;
     timestampSeconds?: number;
@@ -279,7 +353,7 @@ export function updatePartyPlayback(
   if (data.timestampFormatted) {
     room.messages.push({
       id: `sys_time_${Date.now()}`,
-      sender: 'RoseFlix Bot',
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
       text: `Host synchronized playback to timestamp ${data.timestampFormatted}.`,
       timestamp: Date.now(),
       isHost: false,
@@ -287,7 +361,7 @@ export function updatePartyPlayback(
   } else if (data.isPaused === true) {
     room.messages.push({
       id: `sys_pause_${Date.now()}`,
-      sender: 'RoseFlix Bot',
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
       text: `Host paused the session for all participants.`,
       timestamp: Date.now(),
       isHost: false,
@@ -295,7 +369,7 @@ export function updatePartyPlayback(
   } else if (data.countdownEnd) {
     room.messages.push({
       id: `sys_resume_${Date.now()}`,
-      sender: 'RoseFlix Bot',
+      sender: `${SITE_CONFIG.SITE_NAME} Bot`,
       text: `Host resumed streaming. 3-second synchronized countdown started!`,
       timestamp: Date.now(),
       isHost: false,

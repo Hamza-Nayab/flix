@@ -4,7 +4,7 @@ import './globals.css';
 import Navbar from '@/components/layout/Navbar';
 import Footer from '@/components/layout/Footer';
 import PopUnderManager from '@/components/ads/PopUnderManager';
-import { getSiteUrl } from '@/lib/seo';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 const outfit = Outfit({
   subsets: ['latin'],
@@ -18,7 +18,8 @@ const inter = Inter({
   display: 'swap',
 });
 
-const siteUrl = getSiteUrl();
+const siteUrl = SITE_CONFIG.SITE_URL;
+const siteName = SITE_CONFIG.SITE_NAME;
 
 export const metadata: Metadata = {
   metadataBase: new URL(siteUrl),
@@ -26,45 +27,47 @@ export const metadata: Metadata = {
     canonical: '/',
   },
   title: {
-    default: 'RoseFlix - Stream Movies & TV Series in 1080p HD',
-    template: '%s | RoseFlix',
+    default: `${siteName} - Stream Movies, TV Shows, Anime & K-Dramas in 1080p HD`,
+    template: `%s | ${siteName}`,
   },
   description:
-    'Stream thousands of movies and TV series online in crisp full HD. High-speed playback, redundant servers, English subtitles, and zero buffer streaming.',
+    `Stream thousands of movies, global TV series, simulcast anime, and Korean dramas online in crisp full HD. High-speed playback, redundant servers, English subtitles, and zero buffer streaming on ${siteName}.`,
   keywords: [
     'movies online',
     'stream free hd',
     'watch series online',
-    'roseflix',
+    'watch anime free',
+    'watch kdrama eng sub',
+    siteName.toLowerCase(),
     'stream movies',
     'free streaming',
     'watch movies online free',
     'watch tv online full hd',
   ],
-  authors: [{ name: 'RoseFlix' }],
-  creator: 'RoseFlix',
-  publisher: 'RoseFlix',
+  authors: [{ name: siteName }],
+  creator: siteName,
+  publisher: siteName,
   openGraph: {
     type: 'website',
     locale: 'en_US',
     url: siteUrl,
-    siteName: 'RoseFlix',
-    title: 'RoseFlix - Stream Movies & TV Series in 1080p HD',
+    siteName: siteName,
+    title: `${siteName} - Stream Movies, TV Series, Anime & K-Dramas in 1080p HD`,
     description:
-      'Stream thousands of movies and TV series online in crisp full HD. High quality, multi-server redundancy, and zero buffering.',
+      `Stream thousands of movies, TV series, anime, and K-Dramas online in crisp full HD. Multi-server redundancy, English subtitles, and zero buffering on ${siteName}.`,
     images: [
       {
         url: '/og-default.jpg',
         width: 1200,
         height: 630,
-        alt: 'RoseFlix - Stream Movies & TV Series Online Free in HD',
+        alt: `${siteName} - Stream Movies, Series & Dramas Online Free in HD`,
       },
     ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'RoseFlix - Stream Movies & TV Series in 1080p HD',
-    description: 'Stream movies and TV series in 1080p HD online with fast multi-server playback.',
+    title: `${siteName} - Stream Movies & TV Series in 1080p HD`,
+    description: `Stream movies, series, anime, and K-Dramas in 1080p HD online with fast multi-server playback on ${siteName}.`,
     images: ['/og-default.jpg'],
   },
   robots: {
@@ -90,8 +93,24 @@ export default function RootLayout({
       lang="en"
       data-scroll-behavior="smooth"
       className={`${outfit.variable} ${inter.variable} dark antialiased`}
+      style={{
+        '--brand-color': SITE_CONFIG.PRIMARY_COLOR,
+        '--primary-color': SITE_CONFIG.PRIMARY_COLOR,
+        '--primary-rgb': SITE_CONFIG.PRIMARY_RGB,
+        '--primary-contrast-text': SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+        '--primary-gradient-to': SITE_CONFIG.PRIMARY_GRADIENT_TO,
+      } as React.CSSProperties}
     >
-      <body className="min-h-screen bg-[#070709] text-[#F8F9FA] flex flex-col font-sans selection:bg-[#FF1E56] selection:text-white">
+      <body
+        className="min-h-screen bg-[#070709] text-[#F8F9FA] flex flex-col font-sans"
+        style={{
+          '--brand-color': SITE_CONFIG.PRIMARY_COLOR,
+          '--primary-color': SITE_CONFIG.PRIMARY_COLOR,
+          '--primary-rgb': SITE_CONFIG.PRIMARY_RGB,
+          '--primary-contrast-text': SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+          '--primary-gradient-to': SITE_CONFIG.PRIMARY_GRADIENT_TO,
+        } as React.CSSProperties}
+      >
         <PopUnderManager />
         <Navbar />
         <main className="flex-1">{children}</main>

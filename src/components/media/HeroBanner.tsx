@@ -6,9 +6,37 @@ import Image from 'next/image';
 import { Play, Info, Star, Calendar, Flame } from 'lucide-react';
 import { MediaItem } from '@/types/tmdb';
 import { getTMDBImageUrl, formatYear, formatRating } from '@/lib/utils';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface HeroBannerProps {
   items: MediaItem[];
+}
+
+function HeroSlideImage({
+  backdropPath,
+  title,
+  year,
+  priority,
+}: {
+  backdropPath?: string | null;
+  title: string;
+  year: string;
+  priority: boolean;
+}) {
+  const [src, setSrc] = useState(getTMDBImageUrl(backdropPath, 'w1280'));
+
+  return (
+    <Image
+      src={src}
+      alt={`${title} (${year}) official backdrop`}
+      fill
+      priority={priority}
+      unoptimized={Boolean(src && (src.includes('myanimelist.net') || src.startsWith('/placeholder')))}
+      onError={() => setSrc('/placeholder-backdrop.svg')}
+      className="object-cover object-top filter brightness-[0.85]"
+      sizes="100vw"
+    />
+  );
 }
 
 export default function HeroBanner({ items }: HeroBannerProps) {
@@ -45,16 +73,12 @@ export default function HeroBanner({ items }: HeroBannerProps) {
               idx === currentIndex ? 'opacity-100 z-10' : 'opacity-0 z-0 pointer-events-none'
             }`}
           >
-            {item.backdrop_path && (
-              <Image
-                src={getTMDBImageUrl(item.backdrop_path, 'original')}
-                alt={`${itemTitle} (${itemYear}) official backdrop`}
-                fill
-                priority={idx === 0}
-                className="object-cover object-top filter brightness-[0.85]"
-                sizes="100vw"
-              />
-            )}
+            <HeroSlideImage
+              backdropPath={item.backdrop_path}
+              title={itemTitle}
+              year={itemYear}
+              priority={idx === 0}
+            />
 
             {/* Vignette Gradients */}
             {/* Bottom Gradient into Obsidian background */}
@@ -72,8 +96,15 @@ export default function HeroBanner({ items }: HeroBannerProps) {
         <div className="max-w-2xl space-y-4">
           {/* Top Pill Badges */}
           <div className="flex flex-wrap items-center gap-2.5">
-            <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-[#FF1E56] text-white shadow-[0_0_15px_rgba(255,30,86,0.6)]">
-              <Flame className="w-3.5 h-3.5 fill-white" />
+            <span
+              className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider shadow-lg"
+              style={{
+                backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                boxShadow: `0 0 15px ${SITE_CONFIG.PRIMARY_COLOR}99`,
+              }}
+            >
+              <Flame className="w-3.5 h-3.5 fill-current" />
               #1 Trending
             </span>
 
@@ -106,9 +137,14 @@ export default function HeroBanner({ items }: HeroBannerProps) {
           <div className="flex flex-wrap items-center gap-4 pt-2">
             <Link
               href={watchUrl}
-              className="flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm sm:text-base text-white bg-gradient-to-r from-[#FF1E56] to-[#D90429] hover:from-[#FF007F] hover:to-[#FF1E56] shadow-[0_0_25px_rgba(255,30,86,0.5)] hover:shadow-[0_0_35px_rgba(255,30,86,0.8)] hover:scale-105 active:scale-95 transition-all duration-300"
+              className="flex items-center gap-2.5 px-6 py-3.5 rounded-xl font-bold text-sm sm:text-base shadow-lg hover:scale-105 active:scale-95 transition-all duration-300"
+              style={{
+                background: `linear-gradient(135deg, ${SITE_CONFIG.PRIMARY_COLOR}, ${SITE_CONFIG.PRIMARY_GRADIENT_TO})`,
+                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                boxShadow: `0 0 25px ${SITE_CONFIG.PRIMARY_COLOR}80`,
+              }}
             >
-              <Play className="w-5 h-5 fill-white" />
+              <Play className="w-5 h-5 fill-current" />
               Watch Now
             </Link>
 
@@ -129,10 +165,16 @@ export default function HeroBanner({ items }: HeroBannerProps) {
               key={idx}
               onClick={() => setCurrentIndex(idx)}
               className={`h-1.5 rounded-full transition-all duration-300 ${
-                idx === currentIndex
-                  ? 'w-8 bg-[#FF1E56] shadow-[0_0_10px_rgba(255,30,86,0.8)]'
-                  : 'w-2 bg-white/20 hover:bg-white/40'
+                idx === currentIndex ? 'w-8 shadow-md' : 'w-2 bg-white/20 hover:bg-white/40'
               }`}
+              style={
+                idx === currentIndex
+                  ? {
+                      backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                      boxShadow: `0 0 10px ${SITE_CONFIG.PRIMARY_COLOR}`,
+                    }
+                  : {}
+              }
               aria-label={`Go to slide ${idx + 1}`}
             />
           ))}

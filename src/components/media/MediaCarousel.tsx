@@ -1,25 +1,64 @@
 'use client';
 
-import React, { useRef } from 'react';
+import React, { useRef, useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import MediaCard from '@/components/media/MediaCard';
-import { MediaItem, Movie, TVShow } from '@/types/tmdb';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface MediaCarouselProps {
   title: string;
-  items: (MediaItem | Movie | TVShow)[];
+  items: any[];
   viewAllHref?: string;
   icon?: React.ReactNode;
 }
 
-export default function MediaCarousel({
+const MediaCarousel = React.memo(function MediaCarousel({
   title,
   items,
   viewAllHref,
   icon,
 }: MediaCarouselProps) {
   const scrollRef = useRef<HTMLDivElement>(null);
+  const [canScrollLeft, setCanScrollLeft] = useState(false);
+  const [canScrollRight, setCanScrollRight] = useState(true);
+
+  const checkScrollBounds = useCallback(() => {
+    if (scrollRef.current) {
+      const { scrollLeft, scrollWidth, clientWidth } = scrollRef.current;
+      const atLeft = scrollLeft <= 10;
+      const atRight = scrollLeft + clientWidth >= scrollWidth - 10;
+
+      setCanScrollLeft(!atLeft);
+      setCanScrollRight(!atRight);
+    }
+  }, []);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (!el) return;
+
+    checkScrollBounds();
+
+    let ticking = false;
+    const onScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          checkScrollBounds();
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    el.addEventListener('scroll', onScroll, { passive: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+
+    return () => {
+      el.removeEventListener('scroll', onScroll);
+      window.removeEventListener('resize', onScroll);
+    };
+  }, [checkScrollBounds, items]);
 
   const scroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
@@ -35,11 +74,17 @@ export default function MediaCarousel({
   if (!items || items.length === 0) return null;
 
   return (
-    <section className="relative my-8 sm:my-12">
+    <section className="relative my-8 sm:my-12 content-visibility-auto">
       {/* Header */}
       <div className="flex items-center justify-between mb-4 px-4 sm:px-6 lg:px-8">
         <div className="flex items-center gap-2.5">
-          <div className="w-1.5 h-6 rounded-full bg-gradient-to-b from-[#FF1E56] to-[#FF007F] shadow-[0_0_10px_rgba(255,30,86,0.6)]" />
+          <div
+            className="w-1.5 h-6 rounded-full"
+            style={{
+              background: `linear-gradient(to bottom, ${SITE_CONFIG.PRIMARY_COLOR}, ${SITE_CONFIG.PRIMARY_GRADIENT_TO})`,
+              boxShadow: `0 0 10px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+            }}
+          />
           <h2 className="text-xl sm:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             {title}
             {icon}
@@ -49,25 +94,29 @@ export default function MediaCarousel({
         {viewAllHref && (
           <Link
             href={viewAllHref}
-            className="text-xs sm:text-sm font-semibold text-[#FF85A1] hover:text-white transition-colors"
+            className="text-xs sm:text-sm font-semibold transition-colors hover:opacity-80"
+            style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
           >
             Explore All &rarr;
           </Link>
         )}
       </div>
 
-      {/* Rail Wrapper - isolated group/carousel so it doesn't leak to child card groups */}
+      {/* Rail Wrapper - isolated group/carousel */}
       <div className="relative px-4 sm:px-6 lg:px-8 group/carousel">
         {/* Left Arrow */}
         <button
           onClick={() => scroll('left')}
-          className="absolute left-1 sm:left-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-[#070709]/90 border border-white/10 text-white flex items-center justify-center shadow-2xl opacity-0 group-hover/carousel:opacity-100 hover:bg-[#FF1E56] hover:border-[#FF1E56] hover:scale-110 transition-all duration-300 disabled:hidden"
+          disabled={!canScrollLeft}
+          className={`absolute left-1 sm:left-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-zinc-950/90 border border-white/10 text-white flex items-center justify-center shadow-2xl transition-all duration-300 hover:bg-[var(--primary-color)] hover:border-[var(--primary-color)] hover:text-[var(--primary-contrast-text)] hover:scale-110 cursor-pointer ${
+            canScrollLeft ? 'opacity-0 group-hover/carousel:opacity-100' : 'hidden'
+          }`}
           aria-label="Scroll left"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
 
-        {/* Scrollable Container */}
+        {/* Scrollable Container with will-change containment */}
         <div
           ref={scrollRef}
           className="flex gap-3 sm:gap-4 overflow-x-auto no-scrollbar scroll-smooth snap-x snap-mandatory py-2"
@@ -77,7 +126,7 @@ export default function MediaCarousel({
               key={`${item.id}-${idx}`}
               className="shrink-0 w-[140px] sm:w-[175px] md:w-[200px] snap-start"
             >
-              <MediaCard item={item} priority={idx < 4} />
+              <MediaCard item={item} priority={false} />
             </div>
           ))}
         </div>
@@ -85,7 +134,10 @@ export default function MediaCarousel({
         {/* Right Arrow */}
         <button
           onClick={() => scroll('right')}
-          className="absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-[#070709]/90 border border-white/10 text-white flex items-center justify-center shadow-2xl opacity-0 group-hover/carousel:opacity-100 hover:bg-[#FF1E56] hover:border-[#FF1E56] hover:scale-110 transition-all duration-300 disabled:hidden"
+          disabled={!canScrollRight}
+          className={`absolute right-1 sm:right-2 top-1/2 -translate-y-1/2 z-20 w-10 h-10 rounded-full bg-zinc-950/90 border border-white/10 text-white flex items-center justify-center shadow-2xl transition-all duration-300 hover:bg-[var(--primary-color)] hover:border-[var(--primary-color)] hover:text-[var(--primary-contrast-text)] hover:scale-110 cursor-pointer ${
+            canScrollRight ? 'opacity-0 group-hover/carousel:opacity-100' : 'hidden'
+          }`}
           aria-label="Scroll right"
         >
           <ChevronRight className="w-6 h-6" />
@@ -93,4 +145,6 @@ export default function MediaCarousel({
       </div>
     </section>
   );
-}
+});
+
+export default MediaCarousel;

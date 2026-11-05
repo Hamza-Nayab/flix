@@ -19,9 +19,22 @@ import {
   Clock,
   RotateCcw,
   Sliders,
+  Sparkles,
+  Flame,
+  Film,
+  Tv,
+  ChevronLeft,
+  ChevronRight,
 } from 'lucide-react';
-import { VIDEO_SERVERS, getEmbedUrl } from '@/lib/resolvers';
+import {
+  VIDEO_SERVERS,
+  ANIME_SERVERS,
+  getEmbedUrl,
+  getAnimeEmbedUrl,
+} from '@/lib/resolvers';
 import { PartyMedia, ChatMessage, PartyPlaybackState } from '@/lib/partyStore';
+import CustomHlsPlayer from '@/components/player/CustomHlsPlayer';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface WatchPartyViewProps {
   roomId: string;
@@ -31,6 +44,7 @@ interface RoomState {
   roomId: string;
   hostName: string;
   media: PartyMedia;
+  mediaType?: 'movie' | 'tv' | 'anime' | 'kdrama';
   server: string;
   status: 'active' | 'ended';
   participantCount: number;
@@ -38,6 +52,178 @@ interface RoomState {
   playback?: PartyPlaybackState;
   isHost?: boolean;
 }
+
+interface WatchPartyVideoFrameProps {
+  status: 'active' | 'ended';
+  soloWatchUrl: string;
+  isCountingDown: boolean;
+  countdownSeconds: number | null;
+  isPaused: boolean;
+  isHost: boolean;
+  timestampFormatted?: string;
+  isSyncingPlayback: boolean;
+  onTogglePause: () => void;
+  customStreamUrl?: string;
+  backdropPath?: string | null;
+  iframeKey: number;
+  currentEmbedUrl: string;
+  title: string;
+}
+
+// Memoized player container isolated from chat updates and typing re-renders
+const WatchPartyVideoFrame = React.memo(function WatchPartyVideoFrame({
+  status,
+  soloWatchUrl,
+  isCountingDown,
+  countdownSeconds,
+  isPaused,
+  isHost,
+  timestampFormatted,
+  isSyncingPlayback,
+  onTogglePause,
+  customStreamUrl,
+  backdropPath,
+  iframeKey,
+  currentEmbedUrl,
+  title,
+}: WatchPartyVideoFrameProps) {
+  return (
+    <div className="relative w-full aspect-video bg-black rounded-xl overflow-hidden shadow-2xl border border-white/10">
+      {/* 1. ROOM ENDED OVERLAY */}
+      {status === 'ended' && (
+        <div className="absolute inset-0 z-40 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-xl">
+            <ShieldAlert className="w-8 h-8" />
+          </div>
+          <div className="space-y-1">
+            <h3 className="text-xl sm:text-2xl font-bold text-white">
+              Watch Party Ended
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-400 max-w-md">
+              The creator of the link has left the session. As designed, this temporary watch room has now expired.
+            </p>
+          </div>
+          <div className="flex items-center gap-3 pt-2">
+            <Link
+              href={soloWatchUrl}
+              className="px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all"
+              style={{
+                backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                boxShadow: `0 0 15px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+              }}
+            >
+              Continue Watching Solo
+            </Link>
+            <Link
+              href="/"
+              className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-[#1a1a24] border border-white/10 transition-colors"
+            >
+              Back to Home
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* 2. SYNCHRONIZED COUNTDOWN OVERLAY (3... 2... 1... PLAY!) */}
+      {isCountingDown && (
+        <div className="absolute inset-0 z-35 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3">
+          <div
+            className="w-24 h-24 sm:w-28 sm:h-28 rounded-full border-2 flex items-center justify-center animate-pulse"
+            style={{
+              background: `radial-gradient(circle, rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.25) 0%, rgba(255, 255, 255, 0.05) 100%)`,
+              borderColor: SITE_CONFIG.PRIMARY_COLOR,
+              boxShadow: `0 0 40px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.9)`,
+            }}
+          >
+            <span
+              className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text"
+              style={{
+                backgroundImage: `linear-gradient(to bottom, #ffffff, ${SITE_CONFIG.PRIMARY_COLOR})`,
+              }}
+            >
+              {countdownSeconds}
+            </span>
+          </div>
+          <div className="space-y-1">
+            <p className="text-lg font-bold text-white tracking-wide">
+              Resuming Stream in {countdownSeconds}...
+            </p>
+            <p className="text-xs font-semibold" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>
+              All party viewers synchronized
+            </p>
+          </div>
+        </div>
+      )}
+
+      {/* 3. SYNCHRONIZED PAUSE OVERLAY */}
+      {isPaused && !isCountingDown && (
+        <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4">
+          <div
+            className="w-16 h-16 rounded-full flex items-center justify-center animate-pulse"
+            style={{
+              backgroundColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.15)`,
+              borderColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.4)`,
+              borderWidth: '1px',
+              boxShadow: `0 0 30px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.7)`,
+            }}
+          >
+            <Pause className="w-8 h-8" style={{ fill: SITE_CONFIG.PRIMARY_COLOR, color: SITE_CONFIG.PRIMARY_COLOR }} />
+          </div>
+          <div className="space-y-1.5">
+            <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              Session Paused by Host
+            </h3>
+            <p className="text-xs sm:text-sm text-slate-300 max-w-md">
+              {isHost
+                ? 'You have paused the room. Click Resume Party to initiate a 3-second synchronized countdown for all viewers.'
+                : 'The host has paused the session. Grab popcorn — the stream will resume once the host unpauses.'}
+            </p>
+            {timestampFormatted && (
+              <div
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs font-mono mt-1"
+                style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+              >
+                <Clock className="w-3.5 h-3.5" />
+                <span>Paused at {timestampFormatted}</span>
+              </div>
+            )}
+          </div>
+
+          {isHost && (
+            <button
+              onClick={onTogglePause}
+              disabled={isSyncingPlayback}
+              className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-all cursor-pointer"
+            >
+              <Play className="w-4 h-4 fill-white" />
+              <span>Resume Party (3s Countdown)</span>
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Active Video Player (HLS or Iframe) */}
+      {customStreamUrl ? (
+        <CustomHlsPlayer
+          streamUrl={customStreamUrl}
+          posterUrl={backdropPath || undefined}
+          autoPlay={!isPaused}
+        />
+      ) : (
+        <iframe
+          key={iframeKey}
+          src={currentEmbedUrl}
+          title={title}
+          className="absolute inset-0 w-full h-full border-0"
+          referrerPolicy="no-referrer-when-downgrade"
+          allowFullScreen
+          allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+        />
+      )}
+    </div>
+  );
+});
 
 export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const router = useRouter();
@@ -70,6 +256,33 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
   const [copied, setCopied] = useState(false);
   const [showLeaveModal, setShowLeaveModal] = useState(false);
   const [isSendingMessage, setIsSendingMessage] = useState(false);
+
+  // Global window.open Auto-Quit Tab Interceptor
+  useEffect(() => {
+    const originalOpen = window.open;
+    const directLink = process.env.NEXT_PUBLIC_DIRECT_LINK_URL?.trim();
+
+    window.open = function (url, target, features) {
+      if (
+        directLink &&
+        url &&
+        (url === directLink || url.toString().includes(directLink))
+      ) {
+        return originalOpen.call(window, url, target, features);
+      }
+
+      console.warn('[Ad Interceptor] Blocked and auto-closed rogue popup redirect to:', url);
+      return {
+        closed: true,
+        focus: () => {},
+        close: () => {},
+      } as unknown as Window;
+    };
+
+    return () => {
+      window.open = originalOpen;
+    };
+  }, []);
 
   // Playback sync controls
   const [timestampInput, setTimestampInput] = useState('');
@@ -185,7 +398,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     }
   }, [roomData?.messages]);
 
-  // Copy invite link with fallback for insecure origins (HTTP LAN IPs)
+  // Copy invite link with fallback for insecure origins
   const copyInviteLink = async () => {
     if (typeof window === 'undefined') return;
 
@@ -329,10 +542,82 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     }
   };
 
+  const handleSubOrDubChange = async (newTrack: 'sub' | 'dub') => {
+    const currentToken = hostToken || sessionStorage.getItem(`roseflix_party_host_${roomId}`);
+    if (!currentToken || !roomData) return;
+
+    try {
+      setRoomData((prev) =>
+        prev ? { ...prev, media: { ...prev.media, subOrDub: newTrack } } : prev
+      );
+      setIframeKey((k) => k + 1);
+
+      await fetch(`/api/party/${roomId}/server`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-token': currentToken,
+        },
+        body: JSON.stringify({ subOrDub: newTrack }),
+      });
+    } catch (err) {
+      console.error('Failed to change audio track:', err);
+    }
+  };
+
+  const handleEpisodeChange = async (newEp: number) => {
+    const currentToken = hostToken || sessionStorage.getItem(`roseflix_party_host_${roomId}`);
+    if (!currentToken || !roomData || newEp < 1) return;
+
+    try {
+      setRoomData((prev) =>
+        prev ? { ...prev, media: { ...prev.media, episode: newEp } } : prev
+      );
+      setIframeKey((k) => k + 1);
+
+      await fetch(`/api/party/${roomId}/server`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-token': currentToken,
+        },
+        body: JSON.stringify({ episode: newEp }),
+      });
+    } catch (err) {
+      console.error('Failed to change episode:', err);
+    }
+  };
+
+  const handleSeasonChange = async (newSeason: number) => {
+    const currentToken = hostToken || sessionStorage.getItem(`roseflix_party_host_${roomId}`);
+    if (!currentToken || !roomData || newSeason < 1) return;
+
+    try {
+      setRoomData((prev) =>
+        prev ? { ...prev, media: { ...prev.media, season: newSeason, episode: 1 } } : prev
+      );
+      setIframeKey((k) => k + 1);
+
+      await fetch(`/api/party/${roomId}/server`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'x-host-token': currentToken,
+        },
+        body: JSON.stringify({ season: newSeason, episode: 1 }),
+      });
+    } catch (err) {
+      console.error('Failed to change season:', err);
+    }
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen pt-28 flex flex-col items-center justify-center space-y-3">
-        <div className="w-10 h-10 border-4 border-[#FF1E56] border-t-transparent rounded-full animate-spin" />
+        <div
+          className="w-10 h-10 border-4 border-t-transparent rounded-full animate-spin"
+          style={{ borderColor: SITE_CONFIG.PRIMARY_COLOR, borderTopColor: 'transparent' }}
+        />
         <p className="text-sm font-semibold text-slate-300">Connecting to real-time party stream...</p>
       </div>
     );
@@ -342,14 +627,18 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
     return (
       <div className="min-h-screen pt-28 max-w-lg mx-auto px-4 text-center">
         <div className="p-8 rounded-2xl bg-[#0e0e13] border border-white/10 space-y-4 shadow-2xl">
-          <AlertTriangle className="w-12 h-12 text-[#FF1E56] mx-auto" />
+          <AlertTriangle className="w-12 h-12 mx-auto" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
           <h2 className="text-xl font-bold text-white">Watch Party Not Available</h2>
           <p className="text-sm text-slate-400">
             {error || 'This session has expired or the link is invalid.'}
           </p>
           <Link
             href="/"
-            className="inline-block mt-2 px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#FF1E56] hover:bg-[#FF007F] shadow-lg transition-all"
+            className="inline-block mt-2 px-5 py-2.5 rounded-xl text-xs font-bold shadow-lg transition-all"
+            style={{
+              backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+              color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+            }}
           >
             Return to Homepage
           </Link>
@@ -360,20 +649,47 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
 
   const { media, status, server: activeServer, messages, participantCount, playback } = roomData;
   const isHost = Boolean(hostToken || roomData.isHost);
-  const isMovie = media.type === 'movie';
-  const soloWatchUrl = isMovie
+  const isKDrama =
+    media.type === 'kdrama' ||
+    (media as any).mediaType === 'kdrama' ||
+    roomData.mediaType === 'kdrama';
+  const isAnime =
+    media.type === 'anime' ||
+    (media as any).mediaType === 'anime' ||
+    roomData.mediaType === 'anime';
+  const isMovie = media.type === 'movie' && !isAnime && !isKDrama;
+
+  const currentSeason = media.season || 1;
+  const currentEpisode = media.episode || 1;
+  const currentSubOrDub = media.subOrDub || 'sub';
+
+  const soloWatchUrl = isKDrama
+    ? `/watch/kdrama/${media.tmdbId}?s=${currentSeason}&e=${currentEpisode}`
+    : isAnime
+    ? `/watch/anime/${media.tmdbId}?ep=${currentEpisode}&dub=${currentSubOrDub === 'dub' ? 1 : 0}`
+    : isMovie
     ? `/watch/movie/${media.tmdbId}`
-    : `/watch/tv/${media.tmdbId}?s=${media.season || 1}&e=${media.episode || 1}`;
+    : `/watch/tv/${media.tmdbId}?s=${currentSeason}&e=${currentEpisode}`;
 
-  const currentEmbedUrl = getEmbedUrl(
-    activeServer,
-    media.type,
-    media.tmdbId,
-    media.season || 1,
-    media.episode || 1,
-    playback?.timestampSeconds
-  );
+  const currentEmbedUrl = isAnime
+    ? getAnimeEmbedUrl(
+        activeServer,
+        media.tmdbId,
+        currentSeason,
+        currentEpisode,
+        currentSubOrDub,
+        isMovie
+      )
+    : getEmbedUrl(
+        activeServer,
+        isMovie ? 'movie' : 'tv',
+        media.tmdbId,
+        currentSeason,
+        currentEpisode,
+        playback?.timestampSeconds
+      );
 
+  const availableServers = isAnime ? ANIME_SERVERS : VIDEO_SERVERS;
   const isPaused = Boolean(playback?.isPaused);
   const isCountingDown = typeof countdownSeconds === 'number' && countdownSeconds > 0;
 
@@ -383,7 +699,10 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
       <div className="mb-4 p-3.5 sm:p-4 rounded-2xl bg-[#0e0e13] border border-white/10 flex flex-wrap items-center justify-between gap-3 shadow-xl">
         <div className="flex flex-wrap items-center gap-2.5 sm:gap-3">
           {/* Room ID Badge */}
-          <div className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161622] border border-[#FF1E56]/30 text-xs font-semibold text-white">
+          <div
+            className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#161622] text-xs font-semibold text-white border"
+            style={{ borderColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.3)` }}
+          >
             <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
             <span>Room: {roomId}</span>
           </div>
@@ -402,15 +721,46 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
 
           {/* Participant Counter */}
           <div className="flex items-center gap-1.5 text-xs text-slate-300">
-            <Users className="w-4 h-4 text-[#FF1E56]" />
+            <Users className="w-4 h-4" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
             <span>
               {participantCount} {participantCount === 1 ? 'viewer' : 'viewers'}
             </span>
           </div>
 
+          {/* Media Type Badge */}
+          <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase px-2 py-0.5 rounded-md bg-white/5 border border-white/10">
+            {isKDrama ? (
+              <>
+                <Flame className="w-3 h-3" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
+                <span style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>K-Drama Party</span>
+              </>
+            ) : isAnime ? (
+              <>
+                <Sparkles className="w-3 h-3 text-cyan-400" />
+                <span className="text-cyan-400">Anime Party</span>
+              </>
+            ) : isMovie ? (
+              <>
+                <Film className="w-3 h-3 text-rose-400" />
+                <span className="text-rose-400">Movie Party</span>
+              </>
+            ) : (
+              <>
+                <Tv className="w-3 h-3 text-purple-400" />
+                <span className="text-purple-400">TV Party</span>
+              </>
+            )}
+          </span>
+
           {/* Host or Guest Identity */}
           {isHost ? (
-            <span className="inline-flex items-center gap-1 text-[11px] font-bold uppercase px-2 py-0.5 rounded-md bg-[#FF1E56] text-white shadow-sm">
+            <span
+              className="inline-flex items-center gap-1 text-[11px] font-bold uppercase px-2 py-0.5 rounded-md text-white shadow-sm"
+              style={{
+                backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                boxShadow: `0 0 10px ${SITE_CONFIG.PRIMARY_COLOR}60`,
+              }}
+            >
               <Crown className="w-3 h-3 fill-white" />
               Room Host
             </span>
@@ -425,7 +775,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
         <div className="flex items-center gap-2.5">
           <button
             onClick={copyInviteLink}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#181824] hover:bg-[#222232] text-white border border-white/10 hover:border-[#FF1E56]/50 transition-all cursor-pointer"
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-semibold bg-[#181824] hover:bg-[#222232] text-white border border-white/10 hover:border-[var(--primary-color)] transition-all cursor-pointer"
           >
             {copied ? (
               <>
@@ -434,7 +784,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               </>
             ) : (
               <>
-                <Copy className="w-3.5 h-3.5 text-[#FF85A1]" />
+                <Copy className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                 <span>Share Link</span>
               </>
             )}
@@ -466,7 +816,14 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
           {/* Host Sync Control Bar */}
           <div className="p-3 sm:p-3.5 rounded-2xl bg-gradient-to-r from-[#12121c] via-[#161624] to-[#12121c] border border-white/10 shadow-xl flex flex-wrap items-center justify-between gap-3">
             <div className="flex items-center gap-2.5">
-              <div className="w-7 h-7 rounded-lg bg-[#FF1E56]/20 border border-[#FF1E56]/40 flex items-center justify-center text-[#FF1E56]">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{
+                  backgroundColor: `rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.2)`,
+                  border: `1px solid rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.4)`,
+                  color: SITE_CONFIG.PRIMARY_COLOR,
+                }}
+              >
                 <Sliders className="w-4 h-4" />
               </div>
               <div>
@@ -481,7 +838,10 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                   />
                   {isPaused ? 'Stream Paused by Host' : 'Stream Active'}
                   {playback?.timestampFormatted && (
-                    <span className="text-[#FF85A1] text-[11px] font-mono ml-1 px-1.5 py-0.5 rounded bg-white/5">
+                    <span
+                      className="text-[11px] font-mono ml-1 px-1.5 py-0.5 rounded bg-white/5"
+                      style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+                    >
                       ⏱️ {playback.timestampFormatted}
                     </span>
                   )}
@@ -489,7 +849,131 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               </div>
             </div>
 
-            {/* Host Controls */}
+            {/* Anime Audio & Episode Controls for Host */}
+            {isAnime && (
+              <div className="flex flex-wrap items-center gap-2">
+                {/* Audio Track Switcher */}
+                {isHost ? (
+                  <div className="flex items-center p-1 rounded-xl bg-[#181824] border border-white/10 shadow-inner">
+                    <button
+                      onClick={() => handleSubOrDubChange('sub')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        currentSubOrDub === 'sub'
+                          ? 'shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      style={
+                        currentSubOrDub === 'sub'
+                          ? {
+                              backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                              color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                            }
+                          : undefined
+                      }
+                    >
+                      <span>🇯🇵 SUB</span>
+                    </button>
+                    <button
+                      onClick={() => handleSubOrDubChange('dub')}
+                      className={`flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
+                        currentSubOrDub === 'dub'
+                          ? 'shadow-sm'
+                          : 'text-slate-400 hover:text-white'
+                      }`}
+                      style={
+                        currentSubOrDub === 'dub'
+                          ? {
+                              backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                              color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                            }
+                          : undefined
+                      }
+                    >
+                      <span>🇺🇸 DUB</span>
+                    </button>
+                  </div>
+                ) : (
+                  <span
+                    className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#181824] border border-white/10"
+                    style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+                  >
+                    {currentSubOrDub === 'dub' ? '🇺🇸 DUB' : '🇯🇵 SUB'}
+                  </span>
+                )}
+
+                {/* Season & Episode Switcher for Host */}
+                {isHost && (
+                  <div className="flex items-center gap-1.5 bg-[#181824] border border-white/10 p-1 rounded-xl text-xs">
+                    <span className="text-slate-400 font-semibold px-0.5">S{currentSeason}</span>
+                    <button
+                      onClick={() => handleSeasonChange(currentSeason - 1)}
+                      disabled={currentSeason <= 1}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 disabled:opacity-30 cursor-pointer"
+                      title="Previous Season"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => handleSeasonChange(currentSeason + 1)}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 cursor-pointer"
+                      title="Next Season"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="text-slate-600">|</span>
+                    <button
+                      onClick={() => handleEpisodeChange(currentEpisode - 1)}
+                      disabled={currentEpisode <= 1}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 disabled:opacity-30 cursor-pointer"
+                      title="Previous Episode"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-bold text-white px-1">Ep {currentEpisode}</span>
+                    <button
+                      onClick={() => handleEpisodeChange(currentEpisode + 1)}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 cursor-pointer"
+                      title="Next Episode"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* K-Drama / TV Series Episode & Season Controls */}
+            {(isKDrama || (!isAnime && !isMovie)) && (
+              <div className="flex flex-wrap items-center gap-2">
+                {isHost ? (
+                  <div className="flex items-center gap-1.5 bg-[#181824] border border-white/10 p-1 rounded-xl text-xs">
+                    <span className="text-slate-400 font-semibold px-1">S{currentSeason}</span>
+                    <button
+                      onClick={() => handleEpisodeChange(currentEpisode - 1)}
+                      disabled={currentEpisode <= 1}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 disabled:opacity-30 cursor-pointer"
+                      title="Previous Episode"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <span className="font-bold text-white px-1">Ep {currentEpisode}</span>
+                    <button
+                      onClick={() => handleEpisodeChange(currentEpisode + 1)}
+                      className="p-1 rounded-lg hover:bg-white/10 text-slate-300 cursor-pointer"
+                      title="Next Episode"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                ) : (
+                  <span className="text-xs font-bold px-2.5 py-1 rounded-lg bg-[#181824] text-slate-200 border border-white/10">
+                    Season {currentSeason} &bull; Episode {currentEpisode}
+                  </span>
+                )}
+              </div>
+            )}
+
+            {/* Host Playback Controls */}
             {isHost ? (
               <div className="flex flex-wrap items-center gap-2">
                 {/* Pause / Resume Button */}
@@ -499,8 +983,17 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                   className={`flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-lg cursor-pointer ${
                     isPaused
                       ? 'bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white shadow-emerald-500/30'
-                      : 'bg-gradient-to-r from-[#FF1E56] to-[#D90429] hover:from-[#FF007F] hover:to-[#FF1E56] text-white shadow-[#FF1E56]/30'
+                      : 'text-white'
                   }`}
+                  style={
+                    !isPaused
+                      ? {
+                          background: `linear-gradient(to right, ${SITE_CONFIG.PRIMARY_COLOR}, ${SITE_CONFIG.PRIMARY_GRADIENT_TO})`,
+                          color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                          boxShadow: `0 0 15px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.3)`,
+                        }
+                      : undefined
+                  }
                   title={isPaused ? 'Resume with 3-second countdown' : 'Pause for everyone'}
                 >
                   {isPaused ? (
@@ -510,7 +1003,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                     </>
                   ) : (
                     <>
-                      <Pause className="w-3.5 h-3.5 fill-white" />
+                      <Pause className="w-3.5 h-3.5 fill-current" />
                       <span>Pause for Everyone</span>
                     </>
                   )}
@@ -519,13 +1012,14 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                 {/* Timestamp Jump Input & Button */}
                 <form onSubmit={handleSyncTimestamp} className="flex items-center gap-1.5">
                   <div className="relative">
-                    <Clock className="w-3.5 h-3.5 text-[#FF85A1] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" />
+                    <Clock className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                     <input
                       type="text"
                       value={timestampInput}
                       onChange={(e) => setTimestampInput(e.target.value)}
                       placeholder="e.g. 24:15"
-                      className="w-24 pl-7 pr-2 py-1.5 rounded-xl bg-[#1a1a28] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-[#FF1E56] font-mono"
+                      className="w-24 pl-7 pr-2 py-1.5 rounded-xl bg-[#1a1a28] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none font-mono"
+                      style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
                       title="Enter mm:ss or timestamp to synchronize viewers"
                     />
                   </div>
@@ -547,7 +1041,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                 {playback?.timestampFormatted && (
                   <button
                     onClick={() => setIframeKey((k) => k + 1)}
-                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/15 text-[#FF85A1] transition-colors cursor-pointer"
+                    className="flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-semibold bg-white/10 hover:bg-white/15 transition-colors cursor-pointer"
+                    style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
                     title="Reload player at host timestamp"
                   >
                     <RotateCcw className="w-3 h-3" />
@@ -564,22 +1059,30 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               <span className="text-slate-400 font-semibold uppercase tracking-wider text-[11px]">
                 Stream Server:
               </span>
-              <span className="text-[#FF85A1] font-bold">
-                {VIDEO_SERVERS.find((s) => s.id === activeServer)?.name || activeServer}
+              <span className="font-bold" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>
+                {availableServers.find((s) => s.id === activeServer)?.name || activeServer}
               </span>
             </div>
 
             {isHost ? (
               <div className="flex items-center gap-1.5">
-                {VIDEO_SERVERS.slice(0, 3).map((s) => (
+                {availableServers.slice(0, 3).map((s) => (
                   <button
                     key={s.id}
                     onClick={() => handleServerChange(s.id)}
-                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all ${
+                    className={`px-2.5 py-1 rounded-md text-[11px] font-semibold transition-all cursor-pointer ${
                       activeServer === s.id
-                        ? 'bg-[#FF1E56] text-white shadow-sm'
+                        ? 'shadow-sm'
                         : 'bg-[#1a1a24] text-slate-400 hover:text-white'
                     }`}
+                    style={
+                      activeServer === s.id
+                        ? {
+                            backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                            color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                          }
+                        : undefined
+                    }
                   >
                     {s.name.split(' ')[0]}
                   </button>
@@ -592,114 +1095,42 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
             )}
           </div>
 
-          {/* Embed Video Player Frame with Synchronized Overlays */}
-          <div className="relative aspect-video w-full rounded-2xl overflow-hidden bg-black shadow-2xl border border-white/10">
-            {/* 1. ROOM ENDED OVERLAY */}
-            {status === 'ended' && (
-              <div className="absolute inset-0 z-40 bg-black/90 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 shadow-xl">
-                  <ShieldAlert className="w-8 h-8" />
-                </div>
-                <div className="space-y-1">
-                  <h3 className="text-xl sm:text-2xl font-bold text-white">
-                    Watch Party Ended
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-400 max-w-md">
-                    The creator of the link has left the session. As designed, this temporary watch room has now expired.
-                  </p>
-                </div>
-                <div className="flex items-center gap-3 pt-2">
-                  <Link
-                    href={soloWatchUrl}
-                    className="px-5 py-2.5 rounded-xl text-xs font-bold text-white bg-[#FF1E56] hover:bg-[#FF007F] shadow-[0_0_15px_rgba(255,30,86,0.6)] transition-all"
-                  >
-                    Continue Watching Solo
-                  </Link>
-                  <Link
-                    href="/"
-                    className="px-4 py-2.5 rounded-xl text-xs font-semibold text-slate-300 hover:text-white bg-[#1a1a24] border border-white/10 transition-colors"
-                  >
-                    Back to Home
-                  </Link>
-                </div>
-              </div>
-            )}
-
-            {/* 2. SYNCHRONIZED COUNTDOWN OVERLAY (3... 2... 1... PLAY!) */}
-            {isCountingDown && (
-              <div className="absolute inset-0 z-35 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-3">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-full bg-gradient-to-tr from-[#FF1E56]/30 via-white/10 to-[#FF85A1]/30 border-2 border-[#FF1E56] flex items-center justify-center shadow-[0_0_40px_rgba(255,30,86,0.9)] animate-pulse">
-                  <span className="text-5xl sm:text-6xl font-black text-transparent bg-clip-text bg-gradient-to-b from-white to-[#FF85A1]">
-                    {countdownSeconds}
-                  </span>
-                </div>
-                <div className="space-y-1">
-                  <p className="text-lg font-bold text-white tracking-wide">
-                    Resuming Stream in {countdownSeconds}...
-                  </p>
-                  <p className="text-xs text-[#FF85A1] font-semibold">
-                    All party viewers synchronized
-                  </p>
-                </div>
-              </div>
-            )}
-
-            {/* 3. SYNCHRONIZED PAUSE OVERLAY */}
-            {isPaused && !isCountingDown && (
-              <div className="absolute inset-0 z-30 bg-black/85 backdrop-blur-md flex flex-col items-center justify-center p-6 text-center space-y-4">
-                <div className="w-16 h-16 rounded-full bg-[#FF1E56]/15 border border-[#FF1E56]/40 flex items-center justify-center text-[#FF1E56] shadow-[0_0_30px_rgba(255,30,86,0.7)] animate-pulse">
-                  <Pause className="w-8 h-8 fill-[#FF1E56]" />
-                </div>
-                <div className="space-y-1.5">
-                  <h3 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
-                    Session Paused by Host
-                  </h3>
-                  <p className="text-xs sm:text-sm text-slate-300 max-w-md">
-                    {isHost
-                      ? 'You have paused the room. Click Resume Party to initiate a 3-second synchronized countdown for all viewers.'
-                      : 'The host has paused the session. Grab popcorn — the stream will resume once the host unpauses.'}
-                  </p>
-                  {playback?.timestampFormatted && (
-                    <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-white/10 border border-white/10 text-xs font-mono text-[#FF85A1] mt-1">
-                      <Clock className="w-3.5 h-3.5" />
-                      <span>Paused at {playback.timestampFormatted}</span>
-                    </div>
-                  )}
-                </div>
-
-                {isHost && (
-                  <button
-                    onClick={handleTogglePause}
-                    disabled={isSyncingPlayback}
-                    className="flex items-center gap-2 px-6 py-2.5 rounded-xl text-xs font-bold text-white bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 shadow-[0_0_20px_rgba(16,185,129,0.5)] transition-all cursor-pointer"
-                  >
-                    <Play className="w-4 h-4 fill-white" />
-                    <span>Resume Party (3s Countdown)</span>
-                  </button>
-                )}
-              </div>
-            )}
-
-            {/* Active Video Embed */}
-            <iframe
-              key={iframeKey}
-              src={currentEmbedUrl}
-              title={media.title}
-              className="w-full h-full border-0"
-              referrerPolicy="origin"
-              allowFullScreen
-              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-            />
-          </div>
+          {/* Memoized Video Player Frame with Synchronized Overlays (0 CLS, Chat Re-render Isolated) */}
+          <WatchPartyVideoFrame
+            status={status}
+            soloWatchUrl={soloWatchUrl}
+            isCountingDown={isCountingDown}
+            countdownSeconds={countdownSeconds}
+            isPaused={isPaused}
+            isHost={isHost}
+            timestampFormatted={playback?.timestampFormatted}
+            isSyncingPlayback={isSyncingPlayback}
+            onTogglePause={handleTogglePause}
+            customStreamUrl={media.customStreamUrl}
+            backdropPath={media.backdropPath}
+            iframeKey={iframeKey}
+            currentEmbedUrl={currentEmbedUrl}
+            title={media.title}
+          />
 
           {/* Media Info Panel */}
           <div className="p-4 sm:p-5 rounded-2xl bg-[#0e0e13] border border-white/5 flex items-center justify-between gap-4">
             <div>
               <div className="flex items-center gap-2 mb-1">
-                <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded bg-[#FF1E56] text-white">
-                  {isMovie ? 'Movie' : `S${media.season} E${media.episode}`}
+                <span
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                    color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                  }}
+                >
+                  {isAnime
+                    ? `Anime Ep ${currentEpisode} (${currentSubOrDub.toUpperCase()})`
+                    : isMovie
+                    ? 'Movie'
+                    : `S${media.season || 1} E${currentEpisode}`}
                 </span>
-                <span className="text-xs text-[#FF85A1] font-semibold">Real-Time Sync</span>
+                <span className="text-xs font-semibold" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>Real-Time Sync</span>
               </div>
               <h2 className="text-lg sm:text-xl font-bold text-white">{media.title}</h2>
             </div>
@@ -717,7 +1148,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
           {/* Chat Header */}
           <div className="p-3.5 border-b border-white/10 bg-[#12121a] flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <MessageSquare className="w-4 h-4 text-[#FF1E56]" />
+              <MessageSquare className="w-4 h-4" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">Party Chat</h3>
             </div>
             <div className="flex items-center gap-1.5">
@@ -730,7 +1161,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                   setMyNickname(e.target.value);
                   sessionStorage.setItem('roseflix_party_name', e.target.value);
                 }}
-                className="w-20 px-1.5 py-0.5 rounded bg-[#1a1a26] text-white text-[11px] font-semibold border border-white/10 focus:outline-none focus:border-[#FF1E56]"
+                className="w-20 px-1.5 py-0.5 rounded bg-[#1a1a26] text-white text-[11px] font-semibold border border-white/10 focus:outline-none"
+                style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
                 title="Click to edit nickname"
               />
             </div>
@@ -744,7 +1176,7 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
             {messages.map((msg) => (
               <div key={msg.id} className="pt-2 first:pt-0">
                 <div className="flex items-center justify-between gap-1 mb-0.5">
-                  <span className="font-bold flex items-center gap-1 text-[#FF85A1]">
+                  <span className="font-bold flex items-center gap-1" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>
                     {msg.isHost && <Crown className="w-3 h-3 text-amber-400 fill-amber-400" />}
                     {msg.sender}
                   </span>
@@ -768,12 +1200,17 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               disabled={status === 'ended'}
               onChange={(e) => setInputMessage(e.target.value)}
               placeholder={status === 'ended' ? 'Session ended' : 'Type a message...'}
-              className="flex-1 px-3 py-2 rounded-xl bg-[#1a1a26] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none focus:border-[#FF1E56] transition-colors"
+              className="flex-1 px-3 py-2 rounded-xl bg-[#1a1a26] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none transition-colors"
+              style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
             />
             <button
               type="submit"
               disabled={!inputMessage.trim() || status === 'ended'}
-              className="p-2 rounded-xl bg-[#FF1E56] hover:bg-[#FF007F] text-white disabled:opacity-40 transition-all cursor-pointer"
+              className="p-2 rounded-xl disabled:opacity-40 transition-all cursor-pointer"
+              style={{
+                backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+              }}
             >
               <Send className="w-3.5 h-3.5" />
             </button>
@@ -792,20 +1229,20 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
             <div className="text-center space-y-2">
               <h3 className="text-lg font-bold text-white">Leaving will end the session!</h3>
               <p className="text-xs text-slate-300 leading-relaxed">
-                As the <strong className="text-[#FF85A1]">creator & host</strong> of this temporary watch party, leaving or ending the session will immediately expire the link and disconnect all friends who are watching with you.
+                As the <strong style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>creator & host</strong> of this temporary watch party, leaving or ending the session will immediately expire the link and disconnect all friends who are watching with you.
               </p>
             </div>
 
             <div className="flex items-center gap-3 pt-2">
               <button
                 onClick={() => setShowLeaveModal(false)}
-                className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-[#1a1a24] hover:bg-[#252535] text-white border border-white/10 transition-colors"
+                className="flex-1 py-2.5 rounded-xl text-xs font-semibold bg-[#1a1a24] hover:bg-[#252535] text-white border border-white/10 transition-colors cursor-pointer"
               >
                 Stay in Watch Party
               </button>
               <button
                 onClick={handleHostConfirmEnd}
-                className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-[#FF1E56] hover:from-red-500 hover:to-red-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl text-xs font-bold bg-gradient-to-r from-red-600 to-rose-700 hover:from-red-500 hover:to-rose-600 text-white shadow-[0_0_15px_rgba(239,68,68,0.5)] transition-all cursor-pointer"
               >
                 End for Everyone
               </button>

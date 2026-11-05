@@ -1,0 +1,87 @@
+version: '3.8'
+
+services:
+  roseflix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: RoseFlix
+        NEXT_PUBLIC_SITE_URL: http://localhost:3001
+        NEXT_PUBLIC_PRIMARY_COLOR: "#FF1E56"
+        NEXT_PUBLIC_PRIMARY_NICHE: movies
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_POPUNDER_COOLDOWN_MINUTES: "30"
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: roseflix_app
+    restart: always
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3001:3000"
+    mem_limit: 1024m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  anirose:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: AniRose
+        NEXT_PUBLIC_SITE_URL: http://localhost:3002
+        NEXT_PUBLIC_PRIMARY_COLOR: "#00F5D4"
+        NEXT_PUBLIC_PRIMARY_NICHE: anime
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_POPUNDER_COOLDOWN_MINUTES: "30"
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: anirose_app
+    restart: always
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3002:3000"
+    mem_limit: 1024m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  dramapulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: DramaPulse
+        NEXT_PUBLIC_SITE_URL: http://localhost:3003
+        NEXT_PUBLIC_PRIMARY_COLOR: "#8B5CF6"
+        NEXT_PUBLIC_PRIMARY_NICHE: kdrama
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_POPUNDER_COOLDOWN_MINUTES: "30"
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: dramapulse_app
+    restart: always
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3003:3000"
+    mem_limit: 1024m
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/api/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+

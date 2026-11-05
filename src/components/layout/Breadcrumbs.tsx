@@ -1,6 +1,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ChevronRight, Home } from 'lucide-react';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 export interface BreadcrumbItem {
   name: string;
@@ -19,9 +20,9 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
           <Link
             href="/"
             className="flex items-center gap-1 hover:text-white transition-colors"
-            title="Return to RoseFlix Home"
+            title={`Return to ${SITE_CONFIG.NAME} Home`}
           >
-            <Home className="w-3.5 h-3.5 text-[#FF1E56]" />
+            <Home className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
             <span>Home</span>
           </Link>
         </li>
@@ -35,7 +36,8 @@ export default function Breadcrumbs({ items }: BreadcrumbsProps) {
               {isLast ? (
                 <span
                   aria-current="page"
-                  className="font-semibold text-[#FF85A1] max-w-[200px] sm:max-w-md truncate"
+                  className="font-semibold max-w-[200px] sm:max-w-md truncate"
+                  style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
                 >
                   {item.name}
                 </span>

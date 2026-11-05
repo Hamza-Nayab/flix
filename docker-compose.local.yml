@@ -1,0 +1,97 @@
+version: '3.8'
+
+services:
+  roseflix:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: RoseFlix
+        NEXT_PUBLIC_SITE_URL: http://roseflix.local:8080
+        NEXT_PUBLIC_PRIMARY_COLOR: "#FF1E56"
+        NEXT_PUBLIC_PRIMARY_NICHE: movies
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: roseflix
+    restart: always
+    env_file:
+      - .env.roseflix.local
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3001:3000"
+    networks:
+      - local_testing_net
+
+  anirose:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: AniRose
+        NEXT_PUBLIC_SITE_URL: http://anirose.local:8080
+        NEXT_PUBLIC_PRIMARY_COLOR: "#00F5D4"
+        NEXT_PUBLIC_PRIMARY_NICHE: anime
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: anirose
+    restart: always
+    env_file:
+      - .env.anirose.local
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3002:3000"
+    networks:
+      - local_testing_net
+
+  dramapulse:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        NEXT_PUBLIC_TMDB_API_KEY: 2829a1add433f561ebd50469df695228
+        NEXT_PUBLIC_SITE_NAME: DramaPulse
+        NEXT_PUBLIC_SITE_URL: http://dramapulse.local:8080
+        NEXT_PUBLIC_PRIMARY_COLOR: "#8B5CF6"
+        NEXT_PUBLIC_PRIMARY_NICHE: kdrama
+        NEXT_PUBLIC_ENABLE_ADS: "true"
+        NEXT_PUBLIC_AD_PHASE: clean
+        NEXT_PUBLIC_DIRECT_LINK_URL: https://asiafilm.org/4/287bf0d63aeec5a2ec61f86a8bf8e1bd
+    container_name: dramapulse
+    restart: always
+    env_file:
+      - .env.dramapulse.local
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    ports:
+      - "3003:3000"
+    networks:
+      - local_testing_net
+
+  local-proxy:
+    image: nginx:alpine
+    container_name: local-proxy
+    restart: always
+    ports:
+      - "8080:80"
+    volumes:
+      - ./nginx.local.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - roseflix
+      - anirose
+      - dramapulse
+    networks:
+      - local_testing_net
+
+networks:
+  local_testing_net:
+    driver: bridge
+

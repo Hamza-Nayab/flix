@@ -18,6 +18,7 @@ import {
   buildVideoObjectSchema,
   buildBreadcrumbSchema,
 } from '@/lib/seo';
+import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface PageProps {
   params: Promise<{ id: string }>;
@@ -166,10 +167,12 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
             {/* Poster Thumbnail */}
             <div className="relative w-36 sm:w-48 aspect-[2/3] rounded-xl overflow-hidden bg-[#161620] shrink-0 border border-white/10 shadow-xl self-start">
               <Image
-                src={getTMDBImageUrl(show.poster_path, 'w500')}
+                src={getTMDBImageUrl(show.poster_path, 'w342')}
                 alt={`${show.name} (${year}) official series poster`}
                 fill
-                priority
+                priority={false}
+                loading="lazy"
+                decoding="async"
                 className="object-cover"
                 sizes="(max-width: 640px) 144px, 192px"
               />
@@ -179,7 +182,13 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
             <div className="flex-1 space-y-4">
               <div>
                 <div className="flex flex-wrap items-center gap-2 mb-2">
-                  <span className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md bg-[#FF1E56] text-white">
+                  <span
+                    className="text-xs font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-md"
+                    style={{
+                      backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                      color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                    }}
+                  >
                     TV Series
                   </span>
                   <span className="text-xs font-semibold px-2.5 py-0.5 rounded-md bg-white/10 text-white">
@@ -198,7 +207,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
                 </h1>
 
                 {show.tagline && (
-                  <p className="text-sm italic text-[#FF85A1] mt-1">{show.tagline}</p>
+                  <p className="text-sm italic mt-1" style={{ color: SITE_CONFIG.PRIMARY_COLOR }}>{show.tagline}</p>
                 )}
               </div>
 
@@ -236,7 +245,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
                       key={g.id}
                       href={`/tv?genre=${g.id}`}
                       title={`Browse ${g.name} Series`}
-                      className="text-xs px-3 py-1 rounded-full bg-[#161620] hover:bg-[#FF1E56]/20 text-slate-300 hover:text-white border border-white/10 hover:border-[#FF1E56]/40 transition-colors"
+                      className="text-xs px-3 py-1 rounded-full bg-[#161620] text-slate-300 hover:text-white border border-white/10 hover:border-[var(--primary-color)] transition-colors"
                     >
                       {g.name}
                     </Link>
@@ -250,7 +259,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
                   Series Overview & Synopsis
                 </h2>
                 <p className="text-sm text-slate-300 leading-relaxed">
-                  {show.overview || `Watch ${show.name} (${year}) online in full HD with multiple fast streaming servers, episode selector, and English subtitles on RoseFlix.`}
+                  {show.overview || `Watch ${show.name} (${year}) online in full HD with multiple fast streaming servers, episode selector, and English subtitles on ${SITE_CONFIG.NAME}.`}
                 </p>
               </div>
 
@@ -258,7 +267,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
               {show.production_companies && show.production_companies.length > 0 && (
                 <div className="space-y-1.5 pt-1">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Building className="w-3.5 h-3.5 text-[#FF1E56]" />
+                    <Building className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                     Networks & Studios
                   </h3>
                   <p className="text-xs text-slate-300">
@@ -271,7 +280,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
               {topCast.length > 0 && (
                 <div className="space-y-2 pt-2">
                   <h3 className="text-xs font-bold uppercase tracking-wider text-slate-400 flex items-center gap-1.5">
-                    <Users className="w-3.5 h-3.5 text-[#FF1E56]" />
+                    <Users className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                     Featured Cast
                   </h3>
                   <div className="flex flex-wrap gap-2">
@@ -315,7 +324,7 @@ export default async function TVWatchPage({ params, searchParams }: PageProps) {
               title="More Shows You Might Enjoy"
               items={recommendations.map((t) => ({ ...t, media_type: 'tv' }))}
               viewAllHref="/tv"
-              icon={<Tv className="w-5 h-5 text-[#FF1E56]" />}
+              icon={<Tv className="w-5 h-5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />}
             />
           </div>
         )}

@@ -4,14 +4,21 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
+    "dev:roseflix": "node scripts/dev.js roseflix 3001",
+    "dev:anirose": "node scripts/dev.js anirose 3002",
+    "dev:dramapulse": "node scripts/dev.js dramapulse 3003",
+    "start:roseflix": "node scripts/dev.js roseflix 3001 --prod",
+    "start:anirose": "node scripts/dev.js anirose 3002 --prod",
+    "start:dramapulse": "node scripts/dev.js dramapulse 3003 --prod",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
   },
   "dependencies": {
     "clsx": "^2.1.1",
+    "hls.js": "^1.7.4",
     "lucide-react": "^1.57.0",
-    "next": "16.4.0",
+    "next": "^16.4.5",
     "react": "19.3.0",
     "react-dom": "19.3.0",
     "tailwind-merge": "^3.7.0"
@@ -22,7 +29,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.4.0",
+    "eslint-config-next": "^16.4.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

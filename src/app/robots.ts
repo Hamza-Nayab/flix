@@ -8,12 +8,12 @@ export default function robots(): MetadataRoute.Robots {
     rules: [
       {
         userAgent: '*',
-        allow: ['/', '/movies', '/tv', '/search'],
+        allow: ['/', '/movies', '/tv', '/anime', '/kdramas', '/watch/*'],
         disallow: ['/api/', '/party/'],
       },
       {
         userAgent: 'Googlebot',
-        allow: ['/', '/movies', '/tv', '/search'],
+        allow: ['/', '/movies', '/tv', '/anime', '/kdramas', '/watch/*'],
         disallow: ['/api/', '/party/'],
       },
     ],

@@ -8,6 +8,8 @@ import JsonLd from '@/components/seo/JsonLd';
 import { discoverMovies, getMovieGenres } from '@/lib/tmdb';
 import { getSiteUrl, buildBreadcrumbSchema } from '@/lib/seo';
 
+import { SITE_CONFIG } from '@/lib/siteConfig';
+
 interface MoviesPageProps {
   searchParams: Promise<{ genre?: string; page?: string; sort?: string }>;
 }
@@ -27,12 +29,12 @@ export async function generateMetadata({ searchParams }: MoviesPageProps): Promi
   }
 
   const title = genreName
-    ? `Watch ${genreName} Movies Online Free in Full HD${page > 1 ? ` (Page ${page})` : ''} | RoseFlix`
-    : `Watch Movies Online Free in Full HD${page > 1 ? ` (Page ${page})` : ''} | RoseFlix`;
+    ? `Watch ${genreName} Movies Online Free in Full HD${page > 1 ? ` (Page ${page})` : ''} | ${SITE_CONFIG.SITE_NAME}`
+    : `Watch Movies Online Free in Full HD${page > 1 ? ` (Page ${page})` : ''} | ${SITE_CONFIG.SITE_NAME}`;
 
   const description = genreName
-    ? `Stream top ${genreName} movies in full 1080p HD online on RoseFlix. Fast multi-server streaming with English subtitles and zero buffering.`
-    : 'Browse thousands of high-definition movies across Action, Comedy, Sci-Fi, Drama, Horror, and more. Free instant streaming on RoseFlix.';
+    ? `Stream top ${genreName} movies in full 1080p HD online on ${SITE_CONFIG.SITE_NAME}. Fast multi-server streaming with English subtitles and zero buffering.`
+    : `Browse thousands of high-definition movies across Action, Comedy, Sci-Fi, Drama, Horror, and more. Free instant streaming on ${SITE_CONFIG.SITE_NAME}.`;
 
   const canonicalUrl = `${siteUrl}/movies${selectedGenre ? `?genre=${selectedGenre}` : ''}`;
 
@@ -49,7 +51,7 @@ export async function generateMetadata({ searchParams }: MoviesPageProps): Promi
       url: canonicalUrl,
       title,
       description,
-      siteName: 'RoseFlix',
+      siteName: SITE_CONFIG.SITE_NAME,
     },
     twitter: {
       card: 'summary_large_image',
@@ -75,8 +77,8 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
     }),
   ]);
 
-  const movies = moviesData.results.map((m) => ({ ...m, media_type: 'movie' as const }));
-  const totalPages = Math.min(moviesData.total_pages, 500);
+  const movies = (moviesData?.results || []).map((m) => ({ ...m, media_type: 'movie' as const }));
+  const totalPages = Math.min(moviesData?.total_pages || 1, 500);
 
   const activeGenreName = genres.find((g) => g.id.toString() === selectedGenre)?.name;
 
@@ -100,8 +102,11 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
       {/* Page Title & Header */}
       <div className="flex flex-col md:flex-row md:items-end justify-between gap-4 mb-8">
         <div>
-          <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-[#FF85A1] mb-1.5">
-            <Film className="w-4 h-4 text-[#FF1E56]" />
+          <div
+            className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider mb-1.5"
+            style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
+          >
+            <Film className="w-4 h-4" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
             Cinema Catalog
           </div>
           <h1 className="text-3xl sm:text-4xl font-extrabold text-white tracking-tight">
@@ -121,7 +126,7 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
       {/* Genre Filter Pills */}
       <div className="mb-8">
         <div className="flex items-center gap-2 mb-3 text-xs font-bold uppercase tracking-wider text-slate-400">
-          <Filter className="w-3.5 h-3.5 text-[#FF1E56]" />
+          <Filter className="w-3.5 h-3.5" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
           Filter by Genre
         </div>
         <div className="flex flex-wrap gap-2">
@@ -129,9 +134,18 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
             href="/movies"
             className={`text-xs px-3.5 py-1.5 rounded-full transition-all font-medium ${
               !selectedGenre
-                ? 'bg-[#FF1E56] text-white shadow-[0_0_12px_rgba(255,30,86,0.6)]'
+                ? 'shadow-md font-semibold'
                 : 'bg-[#111116] text-slate-300 hover:text-white hover:bg-[#1a1a24] border border-white/5'
             }`}
+            style={
+              !selectedGenre
+                ? {
+                    backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                    color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                    boxShadow: `0 0 12px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+                  }
+                : undefined
+            }
           >
             All Genres
           </Link>
@@ -144,9 +158,18 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
                 href={`/movies?genre=${g.id}`}
                 className={`text-xs px-3.5 py-1.5 rounded-full transition-all font-medium ${
                   isSelected
-                    ? 'bg-[#FF1E56] text-white shadow-[0_0_12px_rgba(255,30,86,0.6)]'
+                    ? 'shadow-md font-semibold'
                     : 'bg-[#111116] text-slate-300 hover:text-white hover:bg-[#1a1a24] border border-white/5'
                 }`}
+                style={
+                  isSelected
+                    ? {
+                        backgroundColor: SITE_CONFIG.PRIMARY_COLOR,
+                        color: SITE_CONFIG.PRIMARY_CONTRAST_TEXT,
+                        boxShadow: `0 0 12px rgba(${SITE_CONFIG.PRIMARY_RGB}, 0.6)`,
+                      }
+                    : undefined
+                }
               >
                 {g.name}
               </Link>
@@ -167,7 +190,7 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
         {currentPage > 1 && (
           <Link
             href={`/movies?${selectedGenre ? `genre=${selectedGenre}&` : ''}page=${currentPage - 1}`}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#111116] border border-white/10 hover:border-[#FF1E56]/50 text-white transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#111116] border border-white/10 hover:border-[var(--primary-color)] text-white transition-colors"
           >
             <ChevronLeft className="w-4 h-4" />
             Previous Page
@@ -181,7 +204,7 @@ export default async function MoviesPage({ searchParams }: MoviesPageProps) {
         {currentPage < totalPages && (
           <Link
             href={`/movies?${selectedGenre ? `genre=${selectedGenre}&` : ''}page=${currentPage + 1}`}
-            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#111116] border border-white/10 hover:border-[#FF1E56]/50 text-white transition-colors"
+            className="flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-semibold bg-[#111116] border border-white/10 hover:border-[var(--primary-color)] text-white transition-colors"
           >
             Next Page
             <ChevronRight className="w-4 h-4" />

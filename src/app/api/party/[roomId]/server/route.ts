@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { updatePartyServer } from '@/lib/partyStore';
+import { updatePartyServer, updatePartyMedia } from '@/lib/partyStore';
 
 export async function POST(
   request: NextRequest,
@@ -9,19 +9,30 @@ export async function POST(
   const hostToken = request.headers.get('x-host-token');
 
   if (!hostToken) {
-    return NextResponse.json({ error: 'Only the room creator can switch stream servers' }, { status: 401 });
+    return NextResponse.json(
+      { error: 'Only the room creator can switch stream settings' },
+      { status: 401 }
+    );
   }
 
   try {
-    const { serverId } = await request.json();
-    if (!serverId) {
-      return NextResponse.json({ error: 'Missing serverId' }, { status: 400 });
+    const { serverId, subOrDub, episode, season } = await request.json();
+
+    if (serverId) {
+      updatePartyServer(roomId, hostToken, serverId);
     }
 
-    const updated = updatePartyServer(roomId, hostToken, serverId);
-    return NextResponse.json({ success: updated });
+    if (subOrDub || episode !== undefined || season !== undefined) {
+      updatePartyMedia(roomId, hostToken, {
+        ...(subOrDub ? { subOrDub } : {}),
+        ...(episode !== undefined ? { episode: Number(episode) } : {}),
+        ...(season !== undefined ? { season: Number(season) } : {}),
+      });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error('Failed to update party server:', error);
+    console.error('Failed to update party server or media settings:', error);
     return NextResponse.json({ error: 'Internal Server Error' }, { status: 500 });
   }
 }
