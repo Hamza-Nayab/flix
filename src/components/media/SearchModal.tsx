@@ -141,11 +141,15 @@ export default function SearchModal({ isOpen, onClose }: SearchModalProps) {
           />
           <input
             ref={inputRef}
+            id="global-search-modal-input"
+            name="searchQuery"
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search movies, TV shows, anime & K-dramas on ${SITE_CONFIG.SITE_NAME}...`}
             className="w-full bg-transparent text-white placeholder-slate-400 text-base focus:outline-none"
+            autoComplete="off"
+            aria-label="Search all content"
           />
           {loading && (
             <Loader2

@@ -150,11 +150,14 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
             style={{ color: SITE_CONFIG.PRIMARY_COLOR }}
           />
           <input
+            id="search-page-input"
             type="text"
             name="q"
             defaultValue={query}
             placeholder={`Search movies, TV shows, anime & K-dramas on ${SITE_CONFIG.SITE_NAME}...`}
             className="w-full pl-12 pr-28 py-3.5 rounded-2xl bg-[#111116] border border-white/10 text-white placeholder-slate-400 focus:outline-none shadow-xl text-base transition-colors"
+            autoComplete="off"
+            aria-label="Search content"
           />
           {filterType !== 'all' && (
             <input type="hidden" name="type" value={filterType} />

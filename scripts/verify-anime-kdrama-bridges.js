@@ -60,8 +60,9 @@ async function main() {
   const anilistPath = path.resolve(__dirname, '../src/lib/anilist.ts');
   const anilistCode = fs.readFileSync(anilistPath, 'utf8');
 
-  runTest('anilist.ts exports resolveAnimeIds and slugify', () => {
+  runTest('anilist.ts exports resolveAnimeIds, resolveAnimeIdsSync, and slugify', () => {
     assert(anilistCode.includes('export async function resolveAnimeIds'), 'Missing resolveAnimeIds export');
+    assert(anilistCode.includes('export function resolveAnimeIdsSync'), 'Missing resolveAnimeIdsSync export');
     assert(anilistCode.includes('export function slugify'), 'Missing slugify export');
     assert(anilistCode.includes('export interface AnimeBridgeIds'), 'Missing AnimeBridgeIds interface');
   });
@@ -148,30 +149,35 @@ async function main() {
     assert(resolversCode.includes('export const VIDEO_SERVERS'), 'Missing VIDEO_SERVERS export');
   });
 
-  runTest('ANIME_SERVERS has exactly 6 servers with correct endpoints and absolute episode support', () => {
+  runTest('ANIME_SERVERS has FrameXTV Ultra as #1 and multi-server absolute episode support', () => {
     assert(resolversCode.includes('anime-server-1'), 'Missing anime-server-1');
-    assert(resolversCode.includes('vidlink.pro/anime/'), 'Server 1 must support vidlink.pro/anime/');
-    assert(resolversCode.includes('fallback=true'), 'Server 1 must have fallback=true');
+    assert(resolversCode.includes('framextv.xyz/embed/'), 'Server 1 must support framextv.xyz/embed/');
     assert(resolversCode.includes('anime-server-2'), 'Missing anime-server-2');
-    assert(resolversCode.includes('vidsrc.cc/v2/embed/anime/'), 'Server 2 must support vidsrc.cc anime endpoint');
+    assert(resolversCode.includes('vidlink.pro/'), 'Server 2 must support vidlink.pro');
     assert(resolversCode.includes('anime-server-3'), 'Missing anime-server-3');
-    assert(resolversCode.includes('autoembed.co/'), 'Server 3 must support autoembed.co');
+    assert(resolversCode.includes('framextv.xyz/embed/anime'), 'Server 3 must support framextv.xyz direct anime route');
     assert(resolversCode.includes('anime-server-4'), 'Missing anime-server-4');
+    assert(resolversCode.includes('vidsrc.cc/'), 'Server 4 must support vidsrc.cc');
     assert(resolversCode.includes('anime-server-5'), 'Missing anime-server-5');
-    assert(resolversCode.includes('embedanime/${slug}-episode-${absoluteEp}'), 'Server 5 must support anime slug absolute episode routing');
+    assert(resolversCode.includes('vidsrc.to/embed/'), 'Server 5 must support vidsrc.to');
     assert(resolversCode.includes('anime-server-6'), 'Missing anime-server-6');
     assert(resolversCode.includes('multiembed.mov/'), 'Server 6 must support multiembed');
-    assert(resolversCode.includes('absoluteEp'), 'ANIME_SERVERS must support absolute episode numbers');
+    assert(resolversCode.includes('anime-server-7'), 'Missing anime-server-7');
+    assert(resolversCode.includes('autoembed.co/'), 'Server 7 must support autoembed');
+    assert(resolversCode.includes('anime-server-8'), 'Missing anime-server-8');
+    assert(resolversCode.includes('2embed.cc/embedtv/'), 'Server 8 must support 2embed tv routing');
+    assert(resolversCode.includes('absoluteEpisode'), 'ANIME_SERVERS must support absolute episode numbers');
   });
 
-  runTest('KDRAMA_SERVERS has 6 servers with IMDb & TMDB dual-bridge', () => {
-    assert(resolversCode.includes('vidlink.pro/tv/'), 'K-Drama Server 1 must support vidlink.pro/tv/');
-    assert(resolversCode.includes('vidsrc.to/embed/'), 'K-Drama Server 2 must support vidsrc.to');
-    assert(resolversCode.includes('autoembed.co/'), 'K-Drama Server 3 must support autoembed.co');
-    assert(resolversCode.includes('vidsrc.me/embed/'), 'K-Drama Server 4 must support vidsrc.me');
-    assert(resolversCode.includes('multiembed.mov/?video_id='), 'K-Drama Server 5 must support multiembed.mov');
-    assert(resolversCode.includes('imdbId || tmdbId'), 'K-Drama Server 5 must prefer imdbId over tmdbId');
-    assert(resolversCode.includes('2embed.cc/embed'), 'K-Drama Server 6 must support 2embed');
+  runTest('KDRAMA_SERVERS has FrameXTV as #1 and IMDb & TMDB dual-bridge', () => {
+    assert(resolversCode.includes('framextv.xyz/embed/'), 'K-Drama Server 1 must support framextv.xyz');
+    assert(resolversCode.includes('vidlink.pro/tv/'), 'K-Drama Server must support vidlink.pro/tv/');
+    assert(resolversCode.includes('vidsrc.to/embed/'), 'K-Drama Server must support vidsrc.to');
+    assert(resolversCode.includes('autoembed.co/'), 'K-Drama Server must support autoembed.co');
+    assert(resolversCode.includes('vidsrc.me/embed/'), 'K-Drama Server must support vidsrc.me');
+    assert(resolversCode.includes('multiembed.mov/?video_id='), 'K-Drama Server must support multiembed.mov');
+    assert(resolversCode.includes('imdbId || tmdbId'), 'K-Drama Server must prefer imdbId over tmdbId');
+    assert(resolversCode.includes('2embed.cc/embed'), 'K-Drama Server must support 2embed');
   });
 
   // -------------------------------------------------------------------------
@@ -183,7 +189,11 @@ async function main() {
   const animeWatchCode = fs.readFileSync(animeWatchPath, 'utf8');
 
   runTest('AnimeWatchSection includes dynamic season resolution & bridge status pill', () => {
-    assert(animeWatchCode.includes('/api/anime/resolve'), 'AnimeWatchSection must fetch /api/anime/resolve on season switch');
+    assert(animeWatchCode.includes('resolveAnimeIdsSync'), 'AnimeWatchSection must use resolveAnimeIdsSync for offline synchronous resolution');
+    assert(animeWatchCode.includes('syncBridge'), 'AnimeWatchSection must evaluate syncBridge');
+    assert(animeWatchCode.includes('src={embedUrl}'), 'AnimeWatchSection must strictly assign embedUrl to iframe src');
+    assert(!animeWatchCode.includes('fetch(embedUrl)'), 'AnimeWatchSection must never fetch embedUrl');
+    assert(animeWatchCode.includes('/api/anime/resolve'), 'AnimeWatchSection must support /api/anime/resolve for unmapped titles');
     assert(animeWatchCode.includes('bridgeData'), 'AnimeWatchSection must pass bridgeData to getAnimeEmbedUrl');
     assert(animeWatchCode.includes('MAL #'), 'AnimeWatchSection must display MAL status pill');
     assert(animeWatchCode.includes('AniList #'), 'AnimeWatchSection must display AniList status pill');
@@ -194,6 +204,8 @@ async function main() {
     assert(animeWatchCode.includes('viewMode'), 'AnimeWatchSection must support dual view modes');
     assert(animeWatchCode.includes('initialBridgeData'), 'AnimeWatchSection must accept initialBridgeData for instant SSR');
     assert(animeWatchCode.includes('controller.abort()'), 'AnimeWatchSection must use AbortController timeout');
+    assert(animeWatchCode.includes('replaceState'), 'AnimeWatchSection must synchronize URL search params via replaceState');
+    assert(animeWatchCode.includes('handleSelectAbsoluteEpisode'), 'AnimeWatchSection must calculate multi-season episode offsets');
   });
 
   const kdramaWatchPath = path.resolve(__dirname, '../src/components/kdrama/KDramaWatchSection.tsx');

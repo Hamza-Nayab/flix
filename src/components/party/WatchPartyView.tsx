@@ -216,7 +216,7 @@ const WatchPartyVideoFrame = React.memo(function WatchPartyVideoFrame({
           src={currentEmbedUrl}
           title={title}
           className="absolute inset-0 w-full h-full border-0"
-          referrerPolicy="no-referrer-when-downgrade"
+          referrerPolicy="no-referrer"
           allowFullScreen
           allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         />
@@ -283,6 +283,38 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
       window.open = originalOpen;
     };
   }, []);
+
+  // FrameXTV postMessage Telemetry Listener for Watch Party Timestamp Syncing
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+
+        if (data.event === 'frameXTV:timeupdate' && typeof data.currentTime === 'number') {
+          const currentTime = Math.floor(data.currentTime);
+          if (currentTime > 0) {
+            try {
+              localStorage.setItem(`party_telemetry_${roomId}`, JSON.stringify({
+                currentTime,
+                duration: Math.floor(data.duration || 0),
+                updatedAt: Date.now(),
+              }));
+            } catch {}
+          }
+        }
+      } catch {
+        // Silently ignore cross-origin or parse errors
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [roomId]);
 
   // Playback sync controls
   const [timestampInput, setTimestampInput] = useState('');
@@ -1014,6 +1046,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                   <div className="relative">
                     <Clock className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none" style={{ color: SITE_CONFIG.PRIMARY_COLOR }} />
                     <input
+                      id="party-sync-timestamp-input"
+                      name="partySyncTimestamp"
                       type="text"
                       value={timestampInput}
                       onChange={(e) => setTimestampInput(e.target.value)}
@@ -1021,6 +1055,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                       className="w-24 pl-7 pr-2 py-1.5 rounded-xl bg-[#1a1a28] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none font-mono"
                       style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
                       title="Enter mm:ss or timestamp to synchronize viewers"
+                      autoComplete="off"
+                      aria-label="Synchronize timestamp"
                     />
                   </div>
                   <button
@@ -1152,8 +1188,10 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               <h3 className="text-xs font-bold text-white uppercase tracking-wider">Party Chat</h3>
             </div>
             <div className="flex items-center gap-1.5">
-              <span className="text-[11px] text-slate-400">You:</span>
+              <label htmlFor="party-user-nickname-input" className="text-[11px] text-slate-400">You:</label>
               <input
+                id="party-user-nickname-input"
+                name="partyNickname"
                 type="text"
                 value={myNickname}
                 maxLength={18}
@@ -1164,6 +1202,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
                 className="w-20 px-1.5 py-0.5 rounded bg-[#1a1a26] text-white text-[11px] font-semibold border border-white/10 focus:outline-none"
                 style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
                 title="Click to edit nickname"
+                autoComplete="username"
+                aria-label="Edit your nickname"
               />
             </div>
           </div>
@@ -1195,6 +1235,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
             className="p-2.5 border-t border-white/10 bg-[#12121a] flex items-center gap-2"
           >
             <input
+              id="party-chat-message-input"
+              name="partyChatMessage"
               type="text"
               value={inputMessage}
               disabled={status === 'ended'}
@@ -1202,6 +1244,8 @@ export default function WatchPartyView({ roomId }: WatchPartyViewProps) {
               placeholder={status === 'ended' ? 'Session ended' : 'Type a message...'}
               className="flex-1 px-3 py-2 rounded-xl bg-[#1a1a26] border border-white/10 text-white placeholder-slate-500 text-xs focus:outline-none transition-colors"
               style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
+              autoComplete="off"
+              aria-label="Party chat message"
             />
             <button
               type="submit"

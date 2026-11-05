@@ -41,7 +41,39 @@ export default function VideoPlayer({
   episode = 1,
   streamUrl,
 }: VideoPlayerProps) {
-  const [selectedServer, setSelectedServer] = useState<string>('server-1');
+  const [selectedServer, setSelectedServer] = useState<string>(() => {
+    if (typeof window !== 'undefined') {
+      try {
+        const urlServer = new URL(window.location.href).searchParams.get('server');
+        if (urlServer && VIDEO_SERVERS.some((s) => s.id === urlServer)) {
+          return urlServer;
+        }
+        const saved = localStorage.getItem('preferred_movie_tv_server');
+        if (saved && VIDEO_SERVERS.some((s) => s.id === saved)) {
+          return saved;
+        }
+      } catch {}
+    }
+    return 'server-1';
+  });
+
+  // Load and apply remembered server preference from localStorage on mount
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const urlServer = new URL(window.location.href).searchParams.get('server');
+      const savedServer = localStorage.getItem('preferred_movie_tv_server');
+      const target =
+        urlServer && VIDEO_SERVERS.some((s) => s.id === urlServer)
+          ? urlServer
+          : savedServer && VIDEO_SERVERS.some((s) => s.id === savedServer)
+          ? savedServer
+          : null;
+      if (target && target !== selectedServer) {
+        setSelectedServer(target);
+      }
+    } catch {}
+  }, []);
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [isTheaterMode, setIsTheaterMode] = useState<boolean>(false);
   const [isLoadingServer, setIsLoadingServer] = useState<boolean>(false);
@@ -141,6 +173,14 @@ export default function VideoPlayer({
     if (serverId === selectedServer) return;
     setIsLoadingServer(true);
     setSelectedServer(serverId);
+    try {
+      localStorage.setItem('preferred_movie_tv_server', serverId);
+      const url = new URL(window.location.href);
+      if (url.searchParams.get('server') !== serverId) {
+        url.searchParams.set('server', serverId);
+        window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`);
+      }
+    } catch {}
     setIframeKey((prev) => prev + 1);
     setIsPlaying(true);
 
@@ -339,7 +379,7 @@ export default function VideoPlayer({
             src={embedUrl}
             title={title}
             className="absolute inset-0 w-full h-full border-0"
-            referrerPolicy="no-referrer-when-downgrade"
+            referrerPolicy="no-referrer"
             allowFullScreen
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           />

@@ -16,7 +16,9 @@ import {
   X,
 } from 'lucide-react';
 import { ANIME_SERVERS, getAnimeEmbedUrl } from '@/lib/resolvers';
-import { AnimeItem } from '@/lib/anime';
+import type { AnimeItem } from '@/lib/anime';
+import { normalizeAnimeEpisodeCoordinates } from '@/lib/animeCoordinates';
+import { resolveAnimeIdsSync } from '@/lib/anilist';
 import AdGateOverlay from '@/components/ads/AdGateOverlay';
 import CreatePartyModal from '@/components/party/CreatePartyModal';
 import { getTMDBImageUrl } from '@/lib/utils';
@@ -28,6 +30,7 @@ interface AnimeWatchSectionProps {
   initialSeason?: number;
   initialEpisode?: number;
   initialSubOrDub?: 'sub' | 'dub';
+  initialServer?: string;
   initialBridgeData?: {
     anilistId: number | null;
     malId: number | null;
@@ -43,6 +46,7 @@ export default function AnimeWatchSection({
   initialSeason = 1,
   initialEpisode = 1,
   initialSubOrDub = 'sub',
+  initialServer,
   initialBridgeData,
 }: AnimeWatchSectionProps) {
   const animeId = anime.id || malId || anime.mal_id;
@@ -66,13 +70,27 @@ export default function AnimeWatchSection({
     );
   }, [validSeasons, anime.number_of_episodes, anime.episodes]);
 
-  const [selectedServer, setSelectedServer] = useState<string>('anime-server-1');
-  const [subOrDub, setSubOrDub] = useState<'sub' | 'dub'>(initialSubOrDub);
-  const [currentSeason, setCurrentSeason] = useState<number>(() => {
-    const exists = validSeasons.some((s) => s.season_number === initialSeason);
-    return exists ? initialSeason : validSeasons[0]?.season_number || 1;
+  const [hasMounted, setHasMounted] = useState(false);
+
+  const [selectedServer, setSelectedServer] = useState<string>(() => {
+    if (initialServer && ANIME_SERVERS.some((s) => s.id === initialServer)) {
+      return initialServer;
+    }
+    return 'anime-server-1';
   });
-  const [currentEpisode, setCurrentEpisode] = useState<number>(initialEpisode);
+
+  const [subOrDub, setSubOrDub] = useState<'sub' | 'dub'>(initialSubOrDub);
+
+  // Dynamic coordinate normalization on mount/props (e.g. ?ep=1096 maps to S22 E8)
+  const initialCoords = useMemo(() => {
+    return normalizeAnimeEpisodeCoordinates(anime.seasons, initialSeason, initialEpisode);
+  }, [anime.seasons, initialSeason, initialEpisode]);
+
+  const [currentSeason, setCurrentSeason] = useState<number>(() => {
+    const exists = validSeasons.some((s) => s.season_number === initialCoords.season);
+    return exists ? initialCoords.season : validSeasons[0]?.season_number || 1;
+  });
+  const [currentEpisode, setCurrentEpisode] = useState<number>(initialCoords.episode);
   const [viewMode, setViewMode] = useState<'season' | 'continuous'>('season');
   const [isPlaying, setIsPlaying] = useState<boolean>(true);
   const [showFallbackBanner, setShowFallbackBanner] = useState<boolean>(true);
@@ -80,19 +98,46 @@ export default function AnimeWatchSection({
   const [iframeKey, setIframeKey] = useState<number>(0);
   const [isPartyModalOpen, setIsPartyModalOpen] = useState<boolean>(false);
   const [episodeSearch, setEpisodeSearch] = useState<string>('');
+
+  const title = anime.title || anime.name || 'Anime Stream';
+
+  // Synchronous static bridge resolution: immediately resolves MAL, AniList & slug offline with 0 latency & 0 fetch calls
+  const syncBridge = useMemo(() => {
+    return resolveAnimeIdsSync({
+      tmdbId: animeId,
+      malId: malId || anime.mal_id,
+      title,
+      season: currentSeason,
+    });
+  }, [animeId, malId, anime.mal_id, title, currentSeason]);
+
   const [bridgeData, setBridgeData] = useState<{
     anilistId: number | null;
     malId: number | null;
     slug: string | null;
-  }>({
-    anilistId: initialBridgeData?.anilistId || anime.anilist_id || (anime.id === 37854 || malId == 21 ? 21 : null),
-    malId: initialBridgeData?.malId || anime.mal_id || (anime.id === 37854 || malId == 21 ? 21 : null),
-    slug: initialBridgeData?.slug || anime.slug || (anime.id === 37854 || malId == 21 ? 'one-piece' : null),
+  }>(() => {
+    const staticInitial = resolveAnimeIdsSync({
+      tmdbId: animeId,
+      malId: malId || anime.mal_id,
+      title,
+      season: initialCoords.season,
+    });
+    return {
+      anilistId: staticInitial?.anilistId || initialBridgeData?.anilistId || anime.anilist_id || (anime.id === 37854 || malId == 21 ? 21 : null),
+      malId: staticInitial?.malId || initialBridgeData?.malId || anime.mal_id || (anime.id === 37854 || malId == 21 ? 21 : null),
+      slug: staticInitial?.slug || initialBridgeData?.slug || anime.slug || (anime.id === 37854 || malId == 21 ? 'one-piece' : null),
+    };
   });
 
   // Calculate absolute episode index for continuous playback and specialized anime mirrors
   const absoluteEpisode = useMemo(() => {
     if (validSeasons.length <= 1) {
+      return currentEpisode;
+    }
+    const currentSeasonObj = validSeasons.find((s) => s.season_number === currentSeason);
+    const maxEp = currentSeasonObj?.episode_count || 50;
+    if (currentEpisode > maxEp) {
+      // currentEpisode is already an absolute episode number
       return currentEpisode;
     }
     let priorCount = 0;
@@ -107,26 +152,37 @@ export default function AnimeWatchSection({
   const activeSeasonData = validSeasons.find((s) => s.season_number === currentSeason) || validSeasons[0];
   const seasonEpisodeCount = activeSeasonData?.episode_count || anime.episodes || 12;
 
-  const title = anime.title || anime.name || 'Anime Stream';
-
-  // Dynamic multi-season bridge resolution (using relative API route with timeout & SSR cache check)
+  // Dynamic multi-season bridge resolution:
+  // If static dictionary resolves it, sync immediately with zero network requests.
+  // ONLY for completely unknown/unmapped titles without bridge data, query internal relative route /api/anime/resolve
   useEffect(() => {
-    let isMounted = true;
-    if (isMovie) return;
-
-    // If SSR already provided complete bridge data for the current season, skip redundant client fetch
-    if (
-      currentSeason === initialSeason &&
-      bridgeData.malId &&
-      bridgeData.anilistId &&
-      bridgeData.slug
-    ) {
+    if (syncBridge) {
+      if (
+        bridgeData.malId !== syncBridge.malId ||
+        bridgeData.anilistId !== syncBridge.anilistId ||
+        bridgeData.slug !== syncBridge.slug
+      ) {
+        setBridgeData({
+          anilistId: syncBridge.anilistId,
+          malId: syncBridge.malId,
+          slug: syncBridge.slug,
+        });
+      }
       return;
     }
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 2500);
+    if (isMovie) return;
 
+    // If we already have complete bridge data (from SSR or previous season), skip redundant client fetch
+    if (bridgeData.malId && bridgeData.anilistId && bridgeData.slug) {
+      return;
+    }
+
+    let isMounted = true;
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 2000);
+
+    // Strictly internal relative Next.js API route (never calls external streaming domains)
     fetch(
       `/api/anime/resolve?tmdbId=${animeId}&title=${encodeURIComponent(title)}&season=${currentSeason}`,
       { signal: controller.signal }
@@ -158,7 +214,7 @@ export default function AnimeWatchSection({
       controller.abort();
       clearTimeout(timeout);
     };
-  }, [animeId, title, currentSeason, isMovie, initialSeason]);
+  }, [syncBridge, animeId, title, currentSeason, isMovie, bridgeData.malId, bridgeData.anilistId, bridgeData.slug]);
   const backdropUrl = anime.backdrop_path
     ? getTMDBImageUrl(anime.backdrop_path, 'w1280')
     : anime.poster_path
@@ -282,18 +338,24 @@ export default function AnimeWatchSection({
     };
   }, []);
 
-  const embedUrl = getAnimeEmbedUrl(
-    selectedServer,
-    animeId,
-    currentSeason,
-    currentEpisode,
-    subOrDub,
-    isMovie,
-    {
-      ...bridgeData,
+  // Embed URL for active video server - assigned strictly to iframe src
+  const embedUrl = useMemo(() => {
+    const effectiveBridge = {
+      anilistId: syncBridge?.anilistId || bridgeData.anilistId,
+      malId: syncBridge?.malId || bridgeData.malId,
+      slug: syncBridge?.slug || bridgeData.slug,
       absoluteEpisode,
-    }
-  );
+    };
+    return getAnimeEmbedUrl(
+      selectedServer,
+      animeId,
+      currentSeason,
+      currentEpisode,
+      subOrDub,
+      isMovie,
+      effectiveBridge
+    );
+  }, [selectedServer, animeId, currentSeason, currentEpisode, subOrDub, isMovie, syncBridge, bridgeData, absoluteEpisode]);
 
   const handleSelectSeason = (seasonNum: number) => {
     if (seasonNum === currentSeason) return;
@@ -310,37 +372,109 @@ export default function AnimeWatchSection({
   };
 
   const handleSelectAbsoluteEpisode = (absEp: number) => {
-    // Map absolute episode number to season and seasonal episode
-    let runningCount = 0;
-    let targetSeason = validSeasons[0]?.season_number || 1;
-    let targetEp = absEp;
-
-    for (const s of validSeasons) {
-      const count = s.episode_count || 0;
-      if (runningCount + count >= absEp) {
-        targetSeason = s.season_number;
-        targetEp = Math.max(1, absEp - runningCount);
-        break;
-      }
-      runningCount += count;
-    }
-
-    if (runningCount < absEp && validSeasons.length > 0) {
-      const lastSeason = validSeasons[validSeasons.length - 1];
-      targetSeason = lastSeason.season_number;
-      targetEp = Math.max(1, absEp - (runningCount - (lastSeason.episode_count || 0)));
-    }
-
-    setCurrentSeason(targetSeason);
-    setCurrentEpisode(targetEp);
+    const coords = normalizeAnimeEpisodeCoordinates(anime.seasons, 1, absEp);
+    setCurrentSeason(coords.season);
+    setCurrentEpisode(coords.episode);
     setIsPlaying(true);
     setIframeKey((k) => k + 1);
   };
+
+  // Synchronize remembered server & audio track preferences on client mount
+  useEffect(() => {
+    setHasMounted(true);
+    if (typeof window === 'undefined') return;
+    try {
+      const urlServer = new URL(window.location.href).searchParams.get('server');
+      const savedServer = localStorage.getItem('preferred_anime_server');
+      const targetServer =
+        urlServer && ANIME_SERVERS.some((s) => s.id === urlServer)
+          ? urlServer
+          : savedServer && ANIME_SERVERS.some((s) => s.id === savedServer)
+          ? savedServer
+          : null;
+
+      if (targetServer && targetServer !== selectedServer) {
+        setSelectedServer(targetServer);
+      }
+
+      const savedAudio = localStorage.getItem('preferred_anime_audio');
+      if ((savedAudio === 'sub' || savedAudio === 'dub') && savedAudio !== subOrDub) {
+        setSubOrDub(savedAudio);
+      }
+    } catch {}
+  }, []);
+
+  // Synchronize browser URL query params (?s=X&ep=Y&server=Z) without page reload
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    try {
+      const url = new URL(window.location.href);
+      let changed = false;
+      if (!isMovie) {
+        const currentParamS = url.searchParams.get('s');
+        const currentParamEp = url.searchParams.get('ep');
+        if (currentParamS !== String(currentSeason)) {
+          url.searchParams.set('s', String(currentSeason));
+          changed = true;
+        }
+        if (currentParamEp !== String(currentEpisode)) {
+          url.searchParams.set('ep', String(currentEpisode));
+          changed = true;
+        }
+      }
+      if (url.searchParams.get('server') !== selectedServer) {
+        url.searchParams.set('server', selectedServer);
+        changed = true;
+      }
+      if (changed) {
+        window.history.replaceState(null, '', `${url.pathname}?${url.searchParams.toString()}`);
+      }
+    } catch {
+      // Ignore in non-browser or test environments
+    }
+  }, [currentSeason, currentEpisode, selectedServer, isMovie]);
+
+  // FrameXTV postMessage Telemetry Listener for Resume Playback & Progress
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+
+    const handleMessage = (event: MessageEvent) => {
+      try {
+        const data = event.data;
+        if (!data || typeof data !== 'object') return;
+
+        if (data.event === 'frameXTV:timeupdate' && typeof data.currentTime === 'number') {
+          const { currentTime, duration } = data;
+          const storageKey = isMovie
+            ? `roseflix_resume_${animeId}`
+            : `roseflix_resume_${animeId}_s${currentSeason}_e${currentEpisode}`;
+          localStorage.setItem(
+            storageKey,
+            JSON.stringify({
+              currentTime: Math.floor(currentTime),
+              duration: Math.floor(duration || 0),
+              updatedAt: Date.now(),
+            })
+          );
+        }
+      } catch {
+        // Silently ignore cross-origin or parse errors
+      }
+    };
+
+    window.addEventListener('message', handleMessage);
+    return () => {
+      window.removeEventListener('message', handleMessage);
+    };
+  }, [animeId, currentSeason, currentEpisode, isMovie]);
 
   const handleServerChange = (serverId: string) => {
     if (serverId === selectedServer) return;
     setIsLoadingServer(true);
     setSelectedServer(serverId);
+    try {
+      localStorage.setItem('preferred_anime_server', serverId);
+    } catch {}
     setIframeKey((prev) => prev + 1);
     setIsPlaying(true);
 
@@ -425,6 +559,9 @@ export default function AnimeWatchSection({
             <button
               onClick={() => {
                 setSubOrDub('sub');
+                try {
+                  localStorage.setItem('preferred_anime_audio', 'sub');
+                } catch {}
                 setIframeKey((k) => k + 1);
               }}
               className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -447,6 +584,9 @@ export default function AnimeWatchSection({
             <button
               onClick={() => {
                 setSubOrDub('dub');
+                try {
+                  localStorage.setItem('preferred_anime_audio', 'dub');
+                } catch {}
                 setIframeKey((k) => k + 1);
               }}
               className={`flex items-center gap-1 px-3 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer ${
@@ -485,26 +625,26 @@ export default function AnimeWatchSection({
       </div>
 
       {/* Dismissible Playback Troubleshooting Alert Banner */}
-      {showFallbackBanner && (
+      {hasMounted && showFallbackBanner && (
         <div className="flex items-center justify-between gap-3 px-3.5 py-2.5 rounded-xl bg-amber-500/10 border border-amber-500/25 text-amber-200 text-xs shadow-lg backdrop-blur-sm transition-all animate-fadeIn">
           <div className="flex flex-wrap items-center gap-2">
             <span className="text-base select-none">💡</span>
             <span className="font-medium">
-              If the video is loading or shows a blank screen, click{' '}
+              Using a VPN/Cloudflare WARP or seeing a block screen? Switch to{' '}
               <button
                 type="button"
                 onClick={() => handleServerChange('anime-server-2')}
                 className="font-bold underline text-white hover:text-amber-300 transition-colors cursor-pointer"
               >
-                Server 2 (VidSrc CC Anime)
+                Server 2 (VidLink Anime Pro)
               </button>{' '}
               or{' '}
               <button
                 type="button"
-                onClick={() => handleServerChange('anime-server-5')}
+                onClick={() => handleServerChange('anime-server-4')}
                 className="font-bold underline text-white hover:text-amber-300 transition-colors cursor-pointer"
               >
-                Server 5 (2Embed / GogoAnime)
+                Server 4 (VidSrc CC)
               </button>{' '}
               above for instant playback.
             </span>
@@ -586,7 +726,7 @@ export default function AnimeWatchSection({
             src={embedUrl}
             title={isMovie ? title : `${title} - Ep ${absoluteEpisode} (S${currentSeason} E${currentEpisode})`}
             className="absolute inset-0 w-full h-full border-0"
-            referrerPolicy="no-referrer-when-downgrade"
+            referrerPolicy="no-referrer"
             allowFullScreen
             allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
           />
@@ -684,6 +824,8 @@ export default function AnimeWatchSection({
                 <div className="relative">
                   <Search className="w-3.5 h-3.5 text-slate-500 absolute left-3 top-1/2 -translate-y-1/2" />
                   <input
+                    id="anime-episode-jump-input"
+                    name="animeEpisodeJump"
                     type="number"
                     min={1}
                     max={totalSeriesEpisodes}
@@ -691,6 +833,8 @@ export default function AnimeWatchSection({
                     onChange={(e) => setEpisodeSearch(e.target.value)}
                     placeholder={viewMode === 'continuous' ? `Jump (1-${totalSeriesEpisodes})...` : "Jump to ep #..."}
                     className="w-36 pl-8 pr-3 py-1.5 rounded-xl bg-[#161622] border border-white/10 text-xs text-white placeholder-slate-500 focus:outline-none transition-colors"
+                    autoComplete="off"
+                    aria-label="Jump to anime episode number"
                   />
                 </div>
                 <button

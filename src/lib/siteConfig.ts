@@ -97,10 +97,21 @@ function resolvePrimaryNiche(): PrimaryNiche {
 const primaryColor = resolvePrimaryColor();
 const primaryHex = primaryColor.replace(/^#/, '');
 
+function resolveSiteUrl(): string {
+  if (process.env.NEXT_PUBLIC_API_URL) {
+    return process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, '');
+  }
+  if (typeof window !== 'undefined' && window.location?.origin) {
+    return window.location.origin;
+  }
+  const rawUrl = process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000';
+  return rawUrl.replace(/\/+$/, '');
+}
+
 export const SITE_CONFIG: SiteConfig = {
   NAME: resolveSiteName(),
   SITE_NAME: resolveSiteName(),
-  SITE_URL: (process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000').replace(/\/+$/, ''),
+  SITE_URL: resolveSiteUrl(),
   PRIMARY_COLOR: primaryColor,
   PRIMARY_COLOR_HEX: primaryHex,
   PRIMARY_RGB: hexToRgb(primaryColor),

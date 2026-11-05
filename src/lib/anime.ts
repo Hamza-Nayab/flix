@@ -1,9 +1,12 @@
-import dns from 'node:dns';
 import { resolveAnimeIds, slugify, STATIC_MAL_MAP, STATIC_SLUG_MAP } from '@/lib/anilist';
 
-try {
-  dns.setDefaultResultOrder('ipv4first');
-} catch {}
+if (typeof window === 'undefined') {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const dns = require('node:dns');
+    dns.setDefaultResultOrder?.('ipv4first');
+  } catch {}
+}
 
 const TMDB_BASE_URL = process.env.NEXT_PUBLIC_TMDB_BASE_URL || 'https://api.themoviedb.org/3';
 const TMDB_READ_ACCESS_TOKEN = process.env.TMDB_READ_ACCESS_TOKEN;
@@ -232,9 +235,31 @@ export const FALLBACK_ANIME_LIST: AnimeItem[] = [
     status: 'Returning Series',
     episodes: 1120,
     number_of_episodes: 1120,
-    number_of_seasons: 21,
+    number_of_seasons: 23,
     seasons: [
       { id: 1, name: 'East Blue', season_number: 1, episode_count: 61 },
+      { id: 2, name: 'Whiskey Peak & Little Garden', season_number: 2, episode_count: 16 },
+      { id: 3, name: 'Drum Island', season_number: 3, episode_count: 14 },
+      { id: 4, name: 'Alabasta', season_number: 4, episode_count: 39 },
+      { id: 5, name: 'Dreams!', season_number: 5, episode_count: 13 },
+      { id: 6, name: 'Skypiea', season_number: 6, episode_count: 52 },
+      { id: 7, name: 'G-8 & Long Ring Long Land', season_number: 7, episode_count: 33 },
+      { id: 8, name: 'Water Seven', season_number: 8, episode_count: 35 },
+      { id: 9, name: 'Enies Lobby', season_number: 9, episode_count: 73 },
+      { id: 10, name: 'Thriller Bark', season_number: 10, episode_count: 45 },
+      { id: 11, name: 'Sabaody Archipelago', season_number: 11, episode_count: 26 },
+      { id: 12, name: 'Amazon Lily', season_number: 12, episode_count: 14 },
+      { id: 13, name: 'Impel Down & Marineford', season_number: 13, episode_count: 101 },
+      { id: 14, name: 'Fishman Island', season_number: 14, episode_count: 58 },
+      { id: 15, name: 'Punk Hazard', season_number: 15, episode_count: 62 },
+      { id: 16, name: 'Dressrosa', season_number: 16, episode_count: 50 },
+      { id: 17, name: 'Dressrosa (2)', season_number: 17, episode_count: 56 },
+      { id: 18, name: 'Zou', season_number: 18, episode_count: 55 },
+      { id: 19, name: 'Whole Cake Island', season_number: 19, episode_count: 74 },
+      { id: 20, name: 'Levely Arc', season_number: 20, episode_count: 14 },
+      { id: 21, name: 'Wano Country Arc', season_number: 21, episode_count: 197 },
+      { id: 22, name: 'Egghead', season_number: 22, episode_count: 67 },
+      { id: 23, name: 'Elbaph', season_number: 23, episode_count: 25 },
     ],
     year: 1999,
     images: {
@@ -978,3 +1003,6 @@ export async function searchAnime(query: string, limit = 16): Promise<AnimeItem[
       a.original_name?.toLowerCase().includes(qLower)
   ).slice(0, limit);
 }
+
+// Re-export pure coordinate utilities safe for client and server bundles
+export { normalizeAnimeEpisodeCoordinates } from '@/lib/animeCoordinates';

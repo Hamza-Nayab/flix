@@ -8,7 +8,7 @@ import AnimeWatchSection from '@/components/anime/AnimeWatchSection';
 import AdBanner from '@/components/ads/AdBanner';
 import Breadcrumbs from '@/components/layout/Breadcrumbs';
 import JsonLd from '@/components/seo/JsonLd';
-import { getAnimeById, getTopAiringAnime, FALLBACK_ANIME_LIST } from '@/lib/anime';
+import { getAnimeById, getTopAiringAnime, FALLBACK_ANIME_LIST, normalizeAnimeEpisodeCoordinates } from '@/lib/anime';
 import MediaCarousel from '@/components/media/MediaCarousel';
 import { getTMDBImageUrl } from '@/lib/utils';
 import {
@@ -22,7 +22,7 @@ import { SITE_CONFIG } from '@/lib/siteConfig';
 
 interface PageProps {
   params: Promise<{ id: string }>;
-  searchParams: Promise<{ s?: string; ep?: string; dub?: string; type?: string }>;
+  searchParams: Promise<{ s?: string; ep?: string; dub?: string; type?: string; server?: string }>;
 }
 
 export async function generateMetadata({
@@ -44,11 +44,18 @@ export async function generateMetadata({
 
     const title = anime.title || anime.name || 'Anime Stream';
     const isMovie = anime.anime_media_type === 'movie';
+    const coords = isMovie
+      ? { season: 1, episode: 1, absoluteEpisode: 1 }
+      : normalizeAnimeEpisodeCoordinates(anime.seasons, season, ep);
+    const normalizedSeason = coords.season;
+    const normalizedEpisode = coords.episode;
+    const normalizedAbsoluteEp = coords.absoluteEpisode;
+
     const pageTitle = isMovie
       ? `Watch ${title} Full Movie Online (English Sub & Dub) in HD | ${SITE_CONFIG.SITE_NAME}`
-      : `Watch ${title} Season ${season} Episode ${ep} (English Sub & Dub) in HD | ${SITE_CONFIG.SITE_NAME}`;
+      : `Watch ${title} Season ${normalizedSeason} Episode ${normalizedEpisode} (Ep ${normalizedAbsoluteEp}) (English Sub & Dub) in HD | ${SITE_CONFIG.SITE_NAME}`;
     
-    const canonicalUrl = `${siteUrl}/watch/anime/${id}${isMovie ? '?type=movie' : `?s=${season}&ep=${ep}`}`;
+    const canonicalUrl = `${siteUrl}/watch/anime/${id}${isMovie ? '?type=movie' : `?s=${normalizedSeason}&ep=${normalizedEpisode}`}`;
     const backdropUrl = anime.backdrop_path
       ? getTMDBImageUrl(anime.backdrop_path, 'w1280')
       : `${siteUrl}/og-default.jpg`;
@@ -103,13 +110,13 @@ export async function generateMetadata({
 export default async function AnimeWatchPage({ params, searchParams }: PageProps) {
   const { id } = await params;
   const sParams = await searchParams;
-  const initialSeason = parseInt(sParams.s || '1', 10);
-  const initialEpisode = parseInt(sParams.ep || '1', 10);
+  const rawSeason = parseInt(sParams.s || '1', 10);
+  const rawEpisode = parseInt(sParams.ep || '1', 10);
   const initialSubOrDub = sParams.dub === '1' || sParams.dub === 'true' || sParams.dub === 'dub' ? 'dub' : 'sub';
   const requestedType = sParams.type === 'movie' ? 'movie' : 'tv';
 
   const anime =
-    (await getAnimeById(id, requestedType, initialSeason)) ||
+    (await getAnimeById(id, requestedType, rawSeason)) ||
     FALLBACK_ANIME_LIST.find((a) => String(a.id) === String(id) || String(a.mal_id) === String(id)) ||
     FALLBACK_ANIME_LIST[0];
 
@@ -120,6 +127,13 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
   const siteUrl = getSiteUrl();
   const title = anime.title || anime.name || 'Anime Stream';
   const isMovie = anime.anime_media_type === 'movie';
+  const coords = isMovie
+    ? { season: 1, episode: 1, absoluteEpisode: 1 }
+    : normalizeAnimeEpisodeCoordinates(anime.seasons, rawSeason, rawEpisode);
+  const initialSeason = coords.season;
+  const initialEpisode = coords.episode;
+  const initialAbsoluteEp = coords.absoluteEpisode;
+
   const backdropUrl = anime.backdrop_path ? getTMDBImageUrl(anime.backdrop_path, 'w1280') : '/placeholder-backdrop.svg';
   const posterUrl = anime.poster_path ? getTMDBImageUrl(anime.poster_path, 'w342') : '/placeholder-poster.svg';
 
@@ -128,15 +142,17 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
     { name: 'Anime', url: '/anime' },
     { name: title, url: `/watch/anime/${anime.id}` },
     {
-      name: isMovie ? 'Full Movie' : `S${initialSeason} E${initialEpisode}`,
+      name: isMovie ? 'Full Movie' : `S${initialSeason} E${initialEpisode} (Ep ${initialAbsoluteEp})`,
       url: `/watch/anime/${anime.id}${isMovie ? '?type=movie' : `?s=${initialSeason}&ep=${initialEpisode}`}`,
     },
   ];
 
   // Schema.org structured data
-  const animeSchema = buildAnimeSeriesSchema(anime, siteUrl, initialEpisode);
+  const animeSchema = buildAnimeSeriesSchema(anime, siteUrl, initialAbsoluteEp);
   const videoSchema = buildVideoObjectSchema({
-    name: isMovie ? `Watch ${title} (Eng Sub & Dub) Online HD` : `Watch ${title} S${initialSeason} Ep ${initialEpisode} (Eng Sub & Dub) Online HD`,
+    name: isMovie
+      ? `Watch ${title} (Eng Sub & Dub) Online HD`
+      : `Watch ${title} S${initialSeason} Ep ${initialEpisode} (Ep ${initialAbsoluteEp}) (Eng Sub & Dub) Online HD`,
     description: anime.overview || `Stream ${title} on ${SITE_CONFIG.SITE_NAME}.`,
     thumbnailUrl: backdropUrl,
     uploadDate: anime.first_air_date || anime.release_date || new Date().toISOString(),
@@ -180,6 +196,7 @@ export default async function AnimeWatchPage({ params, searchParams }: PageProps
             initialSeason={initialSeason}
             initialEpisode={initialEpisode}
             initialSubOrDub={initialSubOrDub}
+            initialServer={sParams.server}
             initialBridgeData={{
               anilistId: anime.anilist_id || null,
               malId: anime.mal_id || null,

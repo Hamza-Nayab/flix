@@ -115,10 +115,12 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
 
         {/* Input Name */}
         <div className="space-y-2">
-          <label className="text-xs font-semibold text-slate-300">
+          <label htmlFor="party-host-nickname" className="text-xs font-semibold text-slate-300">
             Your Nickname (No login required)
           </label>
           <input
+            id="party-host-nickname"
+            name="hostNickname"
             type="text"
             value={hostName}
             maxLength={25}
@@ -126,6 +128,8 @@ export default function CreatePartyModal({ isOpen, onClose, media }: CreateParty
             placeholder="e.g. Alex, CinemaFan"
             className="w-full px-4 py-3 rounded-xl bg-[#14141c] border border-white/10 text-white placeholder-slate-500 text-sm focus:outline-none transition-colors"
             style={{ outlineColor: SITE_CONFIG.PRIMARY_COLOR }}
+            autoComplete="username"
+            aria-label="Your Nickname"
           />
         </div>
 

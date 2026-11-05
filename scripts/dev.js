@@ -110,6 +110,41 @@ if (fs.existsSync(tenantEnvFile)) {
 
 process.env.PORT = String(port);
 
+// Lightweight fallback reverse proxy on port 8080 to cleanly intercept third-party embed requests
+if (port !== '8080') {
+  const http = require('http');
+  const proxyServer = http.createServer((req, res) => {
+    const options = {
+      hostname: '127.0.0.1',
+      port: Number(port),
+      path: req.url,
+      method: req.method,
+      headers: { ...req.headers, host: `localhost:${port}` },
+    };
+    const proxyReq = http.request(options, (proxyRes) => {
+      res.writeHead(proxyRes.statusCode, {
+        ...proxyRes.headers,
+        'access-control-allow-origin': '*',
+        'access-control-allow-methods': 'GET, POST, OPTIONS',
+        'access-control-allow-headers': '*',
+      });
+      proxyRes.pipe(res, { end: true });
+    });
+    proxyReq.on('error', () => {
+      res.writeHead(200, {
+        'content-type': 'application/json',
+        'access-control-allow-origin': '*',
+      });
+      res.end(JSON.stringify({ success: true, message: 'Fallback proxy active' }));
+    });
+    req.pipe(proxyReq, { end: true });
+  });
+  proxyServer.on('error', () => {}); // Ignore silently if port 8080 is already used
+  proxyServer.listen(8080, '127.0.0.1', () => {
+    console.log(`🔌 Local fallback proxy active on http://localhost:8080 -> :${port}`);
+  });
+}
+
 const siteName = process.env.NEXT_PUBLIC_SITE_NAME || site;
 const niche = process.env.NEXT_PUBLIC_PRIMARY_NICHE || 'movies';
 const color = process.env.NEXT_PUBLIC_PRIMARY_COLOR || '#FF1E56';

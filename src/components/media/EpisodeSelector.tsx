@@ -77,6 +77,9 @@ export default function EpisodeSelector({
         {/* Custom Season Dropdown */}
         <div className="relative inline-block">
           <select
+            id="season-selector-dropdown"
+            name="seasonSelect"
+            aria-label="Select Season"
             value={selectedSeasonNumber}
             onChange={(e) => setSelectedSeasonNumber(Number(e.target.value))}
             className="appearance-none bg-[#161620] text-white text-sm font-semibold py-2.5 pl-4 pr-10 rounded-xl border border-white/10 focus:outline-none transition-colors cursor-pointer"

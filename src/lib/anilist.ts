@@ -420,23 +420,15 @@ export interface ResolveAnimeOptions {
 }
 
 /**
- * Resolves AniList ID, MAL ID, and URL slug for an anime title.
- * Checks in-memory cache and static map first (by TMDB ID, MAL ID, AniList ID, or slug/title).
- * Falls back to AniList GraphQL with strict timeout, and direct mathematical offline fallback.
+ * Synchronous static bridge resolver for top anime titles.
+ * Resolves AniList ID, MAL ID, and URL slug from built-in offline maps with 0 latency & 0 network calls.
  */
-export async function resolveAnimeIds(options: ResolveAnimeOptions): Promise<AnimeBridgeIds> {
+export function resolveAnimeIdsSync(options: ResolveAnimeOptions): AnimeBridgeIds | null {
   const tmdbIdNum = typeof options.tmdbId === 'string' ? parseInt(options.tmdbId, 10) : Number(options.tmdbId);
   const explicitMalId = options.malId ? (typeof options.malId === 'string' ? parseInt(options.malId, 10) : Number(options.malId)) : undefined;
   const seasonNum = options.season && options.season > 0 ? options.season : 1;
   const rawTitle = options.title?.trim() || options.originalTitle?.trim() || `Anime ${tmdbIdNum || explicitMalId || ''}`.trim();
   const baseSlug = slugify(rawTitle);
-
-  const cacheKey = `${tmdbIdNum}_${explicitMalId || 0}_s${seasonNum}_${baseSlug}`;
-  const cached = bridgeCache.get(cacheKey);
-  const now = Date.now();
-  if (cached && now < cached.expiry) {
-    return cached.data;
-  }
 
   // 1. Check static map by TMDB ID
   let staticMatch: { tmdbId: number; entry: StaticAnimeEntry } | undefined;
@@ -474,7 +466,7 @@ export async function resolveAnimeIds(options: ResolveAnimeOptions): Promise<Ani
     const malId = seasonData?.malId || entry.malId;
     const slug = seasonData?.slug || entry.slug;
 
-    const result: AnimeBridgeIds = {
+    return {
       tmdbId,
       anilistId,
       malId,
@@ -484,8 +476,35 @@ export async function resolveAnimeIds(options: ResolveAnimeOptions): Promise<Ani
       titleRomaji: entry.titleRomaji,
       titleEnglish: entry.titleEnglish,
     };
-    bridgeCache.set(cacheKey, { data: result, expiry: now + CACHE_TTL_MS });
-    return result;
+  }
+
+  return null;
+}
+
+/**
+ * Resolves AniList ID, MAL ID, and URL slug for an anime title.
+ * Checks in-memory cache and static map first (by TMDB ID, MAL ID, AniList ID, or slug/title).
+ * Falls back to AniList GraphQL with strict timeout, and direct mathematical offline fallback.
+ */
+export async function resolveAnimeIds(options: ResolveAnimeOptions): Promise<AnimeBridgeIds> {
+  const tmdbIdNum = typeof options.tmdbId === 'string' ? parseInt(options.tmdbId, 10) : Number(options.tmdbId);
+  const explicitMalId = options.malId ? (typeof options.malId === 'string' ? parseInt(options.malId, 10) : Number(options.malId)) : undefined;
+  const seasonNum = options.season && options.season > 0 ? options.season : 1;
+  const rawTitle = options.title?.trim() || options.originalTitle?.trim() || `Anime ${tmdbIdNum || explicitMalId || ''}`.trim();
+  const baseSlug = slugify(rawTitle);
+
+  const cacheKey = `${tmdbIdNum}_${explicitMalId || 0}_s${seasonNum}_${baseSlug}`;
+  const cached = bridgeCache.get(cacheKey);
+  const now = Date.now();
+  if (cached && now < cached.expiry) {
+    return cached.data;
+  }
+
+  // 1. Instant check via synchronous static resolver
+  const syncMatch = resolveAnimeIdsSync(options);
+  if (syncMatch) {
+    bridgeCache.set(cacheKey, { data: syncMatch, expiry: now + CACHE_TTL_MS });
+    return syncMatch;
   }
 
   // 5. Query AniList GraphQL API with 2000ms timeout (for unmapped titles)

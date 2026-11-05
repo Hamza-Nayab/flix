@@ -289,6 +289,8 @@ export default function CustomHlsPlayer({
         {/* Scrubber Bar */}
         <div className="relative w-full flex items-center mb-3">
           <input
+            id="hls-video-scrubber"
+            name="videoProgress"
             type="range"
             min={0}
             max={duration || 100}
@@ -296,6 +298,7 @@ export default function CustomHlsPlayer({
             onChange={handleSeek}
             className="w-full h-1.5 bg-white/20 rounded-lg appearance-none cursor-pointer hover:h-2 transition-all"
             style={{ accentColor: SITE_CONFIG.PRIMARY_COLOR }}
+            aria-label="Seek video position"
           />
         </div>
 
@@ -319,6 +322,8 @@ export default function CustomHlsPlayer({
                 {isMuted || volume === 0 ? <VolumeX className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
               </button>
               <input
+                id="hls-video-volume"
+                name="videoVolume"
                 type="range"
                 min={0}
                 max={1}
@@ -327,6 +332,7 @@ export default function CustomHlsPlayer({
                 onChange={handleVolumeChange}
                 className="w-14 sm:w-20 h-1 bg-white/20 rounded-lg appearance-none cursor-pointer"
                 style={{ accentColor: SITE_CONFIG.PRIMARY_COLOR }}
+                aria-label="Adjust volume"
               />
             </div>
 

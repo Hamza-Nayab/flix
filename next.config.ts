@@ -44,6 +44,37 @@ const nextConfig: NextConfig = {
   experimental: {
     agentUpgrade: "security",
   },
+  async headers() {
+    return [
+      {
+        source: "/watch/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+      {
+        source: "/anime/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+      {
+        source: "/party/:path*",
+        headers: [
+          {
+            key: "Referrer-Policy",
+            value: "no-referrer",
+          },
+        ],
+      },
+    ];
+  },
 };
 
 export default nextConfig;
